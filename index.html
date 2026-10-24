@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Puzzle Table · Piece by Piece, Find Your Peace</title>
+  <meta name="description" content="Upload a photo or pick one from the library, choose the number of pieces and a table, and solve your own jigsaw puzzle in the browser.">
+  <meta name="theme-color" content="#1c1815">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232f5241' d='M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Hide the start page until the opening animation covers it (js/intro.js removes this) -->
+  <script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('intro-pending');</script>
+</head>
+<body>
+  <!-- Icon sprite: stroke icons inherit colour and stroke settings from the .icon class -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-gallery" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="m6 16 4-4.5 3 3 2-2 3 3.5"/><circle cx="15.5" cy="8.5" r="1.4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-sound-on" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/></symbol>
+    <symbol id="i-sound-off" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="m16 9.5 5 5m0-5-5 5"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M8 14.3V19"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 5 4.5 5.8 4.5 8.5s-4.5 3.5-4.5 8.5M16.5 3.5c0 5-4.5 5.8-4.5 8.5s4.5 3.5 4.5 8.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.3-5.4M4.5 4.5V9H9"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="1.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-pieces" viewBox="0 0 24 24"><path d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.7-7.6.3 1.6 1.1 2.8 2.2 3.4C11.6 7.6 12.9 5 15 3c.3 3 3.5 5.6 3.5 10.6 0 4.3-2.7 7.4-6.5 7.4z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.2 2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6-4.4-4.2 6-.8z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-edges" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx=".5" stroke-dasharray="2 2"/></symbol>
+    <symbol id="i-hint" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.1v.1h5v-.1c0-.8.4-1.6 1.1-2.1A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M4 15.5V12a8 8 0 0 1 16 0v3.5"/><rect x="3.5" y="14" width="4" height="6.5" rx="1.5"/><rect x="16.5" y="14" width="4" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.3 3 7.6 7 9 4-1.4 7-4.7 7-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <!-- achievement medals -->
+    <symbol id="m-first" viewBox="0 0 24 24"><path d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="m-collector" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><rect x="6" y="7" width="12" height="10"/><path d="m7.5 15.5 3-3.5 2 2 1.5-1.5 2.5 3"/></symbol>
+    <symbol id="m-curator" viewBox="0 0 24 24"><path d="m3 9 9-5 9 5M5 9.5v8.5M9.7 9.5v8.5M14.3 9.5v8.5M19 9.5v8.5M3 20.5h18"/></symbol>
+    <symbol id="m-centurion" viewBox="0 0 24 24"><text x="12" y="15.6" text-anchor="middle" font-family="Inter, sans-serif" font-size="9.5" font-weight="700" fill="currentColor" stroke="none">100</text><circle cx="12" cy="12" r="9"/></symbol>
+    <symbol id="m-grandmaster" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 5.5H5v1.5a3 3 0 0 0 3 3M16 5.5h3v1.5a3 3 0 0 1-3 3M12 13v3.5M8.5 20.5h7M9.5 20.5v-4h5v4"/></symbol>
+    <symbol id="m-clock" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 9.5v4l2.5 2M10 3.5h4M12 3.5v3M18 7l1.5-1.5"/></symbol>
+    <symbol id="m-quick" viewBox="0 0 24 24"><path d="M13.5 2.5 5 14h6.5l-1 7.5L19 10h-6.5z"/></symbol>
+    <symbol id="m-solo" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/><path d="m4 4 16 16"/></symbol>
+    <symbol id="m-tables" viewBox="0 0 24 24"><path d="m12 3.5 9 5-9 5-9-5zM3 12.5l9 5 9-5M3 16.5l9 5 9-5"/></symbol>
+  </svg>
+
+  <!-- ===================== Setup ===================== -->
+  <div class="setup-screen" id="setup">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <span class="logo"><svg class="logo-mark"><use href="#i-logo"/></svg>Puzzle Table</span>
+        <button type="button" class="btn ghost" id="open-gallery">
+          <svg class="icon"><use href="#i-gallery"/></svg>
+          My gallery
+          <span class="count" id="gallery-count" hidden></span>
+        </button>
+      </div>
+    </header>
+
+    <section class="hero-stage">
+      <div class="hero">
+        <p class="eyebrow">A little time for yourself</p>
+        <h1>Make space for a quiet&nbsp;moment.</h1>
+        <p class="lede">Turn your favorite memories &amp; photos into puzzles, find your rhythm, and enjoy the beauty of every piece.</p>
+        <p class="motto">Piece by Piece, Find Your Peace.</p>
+      </div>
+      <div class="hero-ghosts" id="hero-ghosts" aria-hidden="true"></div>
+      <div class="hero-drift" id="hero-drift" aria-hidden="true"></div>
+      <div class="hero-cards" id="hero-cards" aria-hidden="true"></div>
+    </section>
+
+    <main class="setup" id="setup-main">
+      <!-- Continue an unfinished puzzle, and today's daily puzzle -->
+      <div class="today-row" id="today-row">
+        <section class="card resume-card" id="resume-card" hidden>
+          <div class="resume-thumb"><img id="resume-img" alt=""><span class="resume-pct" id="resume-pct"></span></div>
+          <div class="resume-body">
+            <p class="card-kicker">Continue your puzzle</p>
+            <h2 id="resume-title"></h2>
+            <p class="resume-meta" id="resume-meta"></p>
+            <div class="resume-bar" aria-hidden="true"><span id="resume-fill"></span></div>
+            <div class="resume-actions">
+              <button type="button" class="btn primary" id="continue-btn">Continue</button>
+              <button type="button" class="btn ghost" id="discard-btn">Discard</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card daily-card" id="daily-card" hidden>
+          <div class="daily-layout">
+          <div class="daily-main">
+            <div class="daily-thumb"><img id="daily-img" alt=""></div>
+            <div class="daily-body">
+              <p class="card-kicker">Daily · <span id="daily-date"></span></p>
+              <h2 id="daily-title"></h2>
+              <p class="daily-streak" id="daily-streak"></p>
+              <p class="daily-message" id="daily-message"></p>
+              <button type="button" class="btn primary" id="daily-btn"></button>
+            </div>
+          </div>
+          <div class="daily-cal" id="daily-cal"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="setup-grid">
+        <div class="steps">
+          <section class="card step" id="step-upload">
+            <header class="step-head">
+              <span class="step-num"><span>1</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2>Choose a photo</h2>
+            </header>
+
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="file-input" accept="image/*" hidden>
+              <span class="dropzone-icon"><svg class="icon"><use href="#i-upload"/></svg></span>
+              <strong>Drop a photo here, or <span class="link">browse</span></strong>
+              <span>JPG, PNG or WebP · at least 300 px on the short side</span>
+            </label>
+
+            <div class="photo-info" id="photo-info" hidden>
+              <img class="photo-thumb" id="photo-thumb" alt="">
+              <div class="photo-details">
+                <div class="photo-name" id="photo-name"></div>
+                <div class="photo-res" id="photo-res"></div>
+                <div class="quality">
+                  <span class="badge" id="quality-badge"></span>
+                  <span class="quality-message" id="quality-message"></span>
+                </div>
+              </div>
+              <button type="button" class="btn secondary small" id="change-photo">Replace</button>
+            </div>
+
+            <div class="library">
+              <p class="library-title">Or pick one from our library</p>
+              <div id="photo-library"></div>
+            </div>
+
+            <p class="error" id="upload-error" role="alert" hidden></p>
+          </section>
+
+          <section class="card step locked" id="step-pieces">
+            <header class="step-head">
+              <span class="step-num"><span>2</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2>How long would you like to stay?</h2>
+            </header>
+            <p class="locked-hint">Choose a photo first.</p>
+            <div class="pace-grid" id="pace-grid" role="radiogroup" aria-label="Pace"></div>
+            <details class="exact" id="exact-pieces">
+              <summary>Choose an exact number of pieces</summary>
+              <div class="option-grid" id="piece-grid" role="radiogroup" aria-label="Number of pieces"></div>
+            </details>
+            <p class="step-note" id="piece-summary"></p>
+          </section>
+
+          <section class="card step locked" id="step-table">
+            <header class="step-head">
+              <span class="step-num"><span>3</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2>Table surface</h2>
+            </header>
+            <p class="locked-hint">Choose a photo first.</p>
+            <div id="setup-table-picker"></div>
+          </section>
+
+          <section class="card step locked" id="step-timer">
+            <header class="step-head">
+              <span class="step-num"><span>4</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2>Timer</h2>
+            </header>
+            <p class="locked-hint">Choose a photo first.</p>
+            <div class="option-grid two" role="radiogroup" aria-label="Timer mode">
+              <label class="option">
+                <input type="radio" name="timer-mode" value="stopwatch" checked>
+                <svg class="icon option-icon"><use href="#i-clock"/></svg>
+                <strong>Stopwatch</strong>
+                <span>Counts up, no pressure</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="timer-mode" value="countdown">
+                <svg class="icon option-icon"><use href="#i-hourglass"/></svg>
+                <strong>Countdown</strong>
+                <span>Beat the clock</span>
+              </label>
+            </div>
+            <div class="countdown-options" id="countdown-options" hidden>
+              <div class="chip-row" id="minute-presets">
+                <button type="button" class="chip" data-minutes="5">5 min</button>
+                <button type="button" class="chip" data-minutes="10">10 min</button>
+                <button type="button" class="chip" data-minutes="15">15 min</button>
+                <button type="button" class="chip" data-minutes="30">30 min</button>
+                <button type="button" class="chip" data-minutes="60">1 hour</button>
+              </div>
+              <label class="field">
+                <span>Custom</span>
+                <input type="number" id="countdown-minutes" min="1" max="600" step="1" inputmode="numeric">
+                <span>minutes</span>
+              </label>
+              <p class="step-note" id="minutes-hint"></p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="card summary" aria-label="Your puzzle">
+          <h2>Your puzzle</h2>
+          <div class="summary-preview" id="summary-preview">
+            <canvas id="preview-canvas" hidden></canvas>
+            <div class="preview-empty" id="preview-empty">
+              <svg class="icon"><use href="#i-pieces"/></svg>
+              <span>Your photo will appear here, cut into pieces.</span>
+            </div>
+          </div>
+          <dl class="summary-list">
+            <div><dt>Pieces</dt><dd id="sum-pieces">–</dd></div>
+            <div><dt>Table</dt><dd id="sum-table">–</dd></div>
+            <div><dt>Timer</dt><dd id="sum-timer">–</dd></div>
+          </dl>
+          <button type="button" class="btn primary large" id="start-btn" disabled>Start puzzle</button>
+          <p class="privacy-note"><svg class="icon"><use href="#i-shield"/></svg>Your photos never leave this device.</p>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span class="logo small"><svg class="logo-mark"><use href="#i-logo"/></svg>Puzzle Table</span>
+      <p class="motto">Piece by Piece, Find Your Peace.</p>
+    </footer>
+  </div>
+
+  <!-- ===================== Play ===================== -->
+  <div class="game" id="game" hidden>
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <button type="button" class="icon-btn" id="back-btn" aria-label="Leave puzzle" title="Leave puzzle">
+          <svg class="icon"><use href="#i-back"/></svg>
+        </button>
+        <span class="toolbar-title" id="game-title"></span>
+      </div>
+
+      <div class="toolbar-center">
+        <div class="clock" id="clock">
+          <svg class="icon clock-icon"><use href="#i-clock"/></svg>
+          <span class="clock-time" id="clock-time">0:00</span>
+        </div>
+        <button type="button" class="icon-btn" id="pause-btn" aria-label="Pause (P)" title="Pause (P)" disabled>
+          <svg class="icon"><use href="#i-pause"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="hint-btn" aria-label="Hint (H)" title="Hint (H): show two pieces that fit" disabled>
+          <svg class="icon"><use href="#i-hint"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="undo-btn" aria-label="Undo (Ctrl+Z)" title="Undo last move (Ctrl+Z)" disabled>
+          <svg class="icon"><use href="#i-undo"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="edges-btn" aria-label="Edges only (E)" aria-pressed="false" title="Edges only (E): fade the inner pieces" disabled>
+          <svg class="icon"><use href="#i-edges"/></svg>
+        </button>
+        <div class="progress" id="progress" title="0 pieces connected">
+          <div class="progress-bar" aria-hidden="true"><span id="progress-fill"></span></div>
+          <span class="progress-text" aria-live="polite"><strong id="progress-text">0%</strong> complete</span>
+        </div>
+      </div>
+
+      <div class="toolbar-side end">
+        <button type="button" class="icon-btn" id="reference-btn" aria-pressed="false" aria-label="Reference picture (R)" title="Reference picture (R)">
+          <svg class="icon"><use href="#i-eye"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="music-btn" aria-pressed="false" aria-label="Music (M)" title="Music (M)">
+          <svg class="icon"><use href="#i-music"/></svg>
+        </button>
+        <div class="popover-wrap">
+          <button type="button" class="icon-btn" id="table-btn" aria-expanded="false" aria-controls="table-popover" aria-label="Change table" title="Change table">
+            <svg class="icon"><use href="#i-table"/></svg>
+          </button>
+          <div class="popover" id="table-popover" hidden></div>
+        </div>
+        <button type="button" class="icon-btn" id="sound-btn" aria-pressed="true" aria-label="Sound" title="Sound">
+          <svg class="icon"><use href="#i-sound-on"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="fullscreen-btn" aria-label="Full screen (F)" title="Full screen (F)">
+          <svg class="icon"><use href="#i-expand"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="table" id="table"></div>
+
+    <figure class="reference" id="reference" hidden>
+      <img id="reference-img" alt="The finished picture">
+      <figcaption>Reference <button type="button" class="reference-close" id="reference-close" aria-label="Hide reference picture"><svg class="icon"><use href="#i-close"/></svg></button></figcaption>
+    </figure>
+
+    <section class="music" id="music" aria-label="Music" hidden>
+      <header class="music-head">
+        <span><svg class="icon"><use href="#i-music"/></svg>Music</span>
+        <button type="button" class="reference-close" id="music-close" aria-label="Hide music panel"><svg class="icon"><use href="#i-close"/></svg></button>
+      </header>
+      <div class="music-moods" id="music-moods" role="radiogroup" aria-label="Mood"></div>
+      <div class="music-controls">
+        <button type="button" class="music-play" id="music-toggle" aria-label="Play music">
+          <svg class="icon"><use href="#i-play"/></svg>
+        </button>
+        <span class="music-now" id="music-now">Not playing</span>
+        <input type="range" class="music-volume" id="music-volume" min="0" max="1" step="0.01" aria-label="Volume">
+      </div>
+      <label class="music-own">
+        <input type="file" id="music-files" accept="audio/*" multiple hidden>
+        <svg class="icon"><use href="#i-upload"/></svg>
+        <span id="music-own-label">Play your own music files</span>
+      </label>
+      <p class="music-note">Made live in your browser: free to enjoy, no licences or downloads.</p>
+    </section>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+
+    <div class="loading" id="loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Cutting your pieces…</p>
+    </div>
+
+    <div class="cover" id="pause-cover" hidden>
+      <div class="result-card static">
+        <span class="result-icon"><svg class="icon"><use href="#i-pause"/></svg></span>
+        <h2>Paused</h2>
+        <p>The clock is stopped and the table is hidden.</p>
+        <div class="result-actions">
+          <button type="button" class="btn primary" id="resume-btn"><svg class="icon"><use href="#i-play"/></svg>Resume</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-card" id="timeup-card" role="alert" hidden>
+      <span class="result-icon warn"><svg class="icon"><use href="#i-hourglass"/></svg></span>
+      <h2>Time's up</h2>
+      <p id="timeup-text"></p>
+      <div class="result-actions">
+        <button type="button" class="btn secondary" id="timeup-new-btn">New puzzle</button>
+        <button type="button" class="btn primary" id="keep-going-btn">Keep going</button>
+      </div>
+    </div>
+
+    <div class="result-card" id="complete-card" role="status" hidden>
+      <span class="result-icon success"><svg class="icon"><use href="#i-check"/></svg></span>
+      <h2>Puzzle complete</h2>
+      <p class="motto">Piece by Piece, Find Your Peace.</p>
+      <div class="result-stars" id="result-stars" role="img"></div>
+      <p class="best-badge" id="best-badge" hidden></p>
+      <p class="daily-note" id="daily-note" hidden></p>
+      <div class="result-stats">
+        <div><span>Time</span><strong id="stat-time"></strong></div>
+        <div><span>Moves</span><strong id="stat-moves"></strong></div>
+        <div><span>Pieces</span><strong id="stat-pieces"></strong></div>
+        <div><span id="stat-extra-label"></span><strong id="stat-extra"></strong></div>
+        <div><span>Hints</span><strong id="stat-hints"></strong></div>
+      </div>
+      <p class="saved-note" id="saved-note"></p>
+      <div class="new-medals" id="new-medals"></div>
+      <div class="result-actions">
+        <button type="button" class="btn secondary" id="replay-btn"><svg class="icon"><use href="#i-replay"/></svg>Play again</button>
+        <button type="button" class="btn secondary" id="view-gallery-btn"><svg class="icon"><use href="#i-gallery"/></svg>View in gallery</button>
+        <button type="button" class="btn primary" id="new-btn">New puzzle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Gallery ===================== -->
+  <div class="gallery-screen" id="gallery" hidden>
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <button type="button" class="icon-btn" id="gallery-back-btn" aria-label="Back" title="Back">
+          <svg class="icon"><use href="#i-back"/></svg>
+        </button>
+        <span class="toolbar-title">My gallery</span>
+      </div>
+    </header>
+    <div class="room">
+      <div class="wall">
+        <div class="gallery-stats" id="gallery-stats"></div>
+        <section class="shelf-wrap" aria-label="Achievements">
+          <h2 class="wall-heading">Achievements</h2>
+          <div class="shelf" id="achievement-shelf"></div>
+        </section>
+        <section aria-label="Finished puzzles">
+          <h2 class="wall-heading">Finished puzzles</h2>
+          <div class="frames" id="frames"></div>
+          <p class="empty-wall" id="empty-wall" hidden>
+            The wall is empty for now. Finish a puzzle and it will be framed and hung here.
+          </p>
+        </section>
+      </div>
+      <div class="floor" id="floor"></div>
+    </div>
+  </div>
+
+  <dialog class="viewer" id="viewer" aria-label="Puzzle details">
+    <button type="button" class="icon-btn light viewer-close" id="viewer-close" aria-label="Close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+    <div class="viewer-body" id="viewer-body"></div>
+    <div class="result-actions">
+      <button type="button" class="btn secondary danger" id="viewer-delete"><svg class="icon"><use href="#i-trash"/></svg><span>Remove</span></button>
+      <button type="button" class="btn secondary" id="viewer-download"><svg class="icon"><use href="#i-download"/></svg>Download</button>
+      <button type="button" class="btn primary" id="viewer-replay"><svg class="icon"><use href="#i-replay"/></svg>Puzzle it again</button>
+    </div>
+  </dialog>
+
+  <script src="vendor/gsap.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
