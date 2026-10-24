@@ -1,6 +1,6 @@
 // The daily puzzle: one library photo per day, cut the same way for everyone, plus the
 // player's streak of days played. Days are local calendar dates ("2026-10-24").
-// Finished days are kept in localStorage on this device.
+// Finished days are kept in localStorage on this device, or in the player's account when signed in.
 
 const DONE_KEY = 'puzzle-daily-done';
 export const DAILY_PIECES = 100;
@@ -38,7 +38,14 @@ export function dailyPhoto(photos, key) {
   return order[dayNumber % sorted.length].p;
 }
 
-export function doneDays() {
+// While signed in, the days come from the account instead: { days: Set, save(day) }.
+let account = null;
+
+export function useAccountDays(days, save) {
+  account = days ? { days: new Set(days), save } : null;
+}
+
+function localDays() {
   try {
     return new Set(JSON.parse(localStorage.getItem(DONE_KEY) || '[]'));
   } catch {
@@ -46,8 +53,28 @@ export function doneDays() {
   }
 }
 
+// The days played here as a guest, removed from this browser (they move into the account).
+export function takeGuestDays() {
+  const days = [...localDays()];
+  try {
+    localStorage.removeItem(DONE_KEY);
+  } catch {
+    // Storage unavailable: nothing was stored.
+  }
+  return days;
+}
+
+export function doneDays() {
+  return account ? new Set(account.days) : localDays();
+}
+
 export function markDone(key) {
-  const days = doneDays();
+  if (account) {
+    account.days.add(key);
+    account.save(key);
+    return new Set(account.days);
+  }
+  const days = localDays();
   days.add(key);
   try {
     localStorage.setItem(DONE_KEY, JSON.stringify([...days].sort()));

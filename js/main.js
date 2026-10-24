@@ -8,8 +8,12 @@ import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
 import {
   savePuzzle, listPuzzles, deletePuzzle, listAchievements, saveAchievements,
   saveProgress, saveProgressPhoto, loadProgress, clearProgress,
+  setUser, moveGuestDataToAccount, puzzleImage, listAccountDays, addAccountDays,
 } from './library.js';
-import { DAILY_PIECES, dayKey, daySeed, dailyPhoto, doneDays, markDone, streak, msUntilTomorrow, renderCalendar } from './daily.js';
+import {
+  DAILY_PIECES, dayKey, daySeed, dailyPhoto, doneDays, markDone, streak, msUntilTomorrow, renderCalendar,
+  useAccountDays, takeGuestDays,
+} from './daily.js';
 import { ACHIEVEMENTS, newlyEarned } from './achievements.js';
 import { renderGallery, renderViewer } from './gallery.js';
 import { icon, setIcon } from './icons.js';
@@ -17,6 +21,8 @@ import { initHero, setHeroRunning } from './hero.js';
 import { playIntro, addReplayButton, introWillPlay, INTRO_REVEAL } from './intro.js';
 import { initScrollPieces, initHeroDrift } from './scrollPieces.js';
 import { createPhotoLibrary, fetchLibraryPhoto, loadLibrary } from './photoLibrary.js';
+import { initAccount } from './account.js';
+
 import { MOODS, loadSettings, saveSettings, playMood, stopMusic, playingMood, setVolume } from './music.js';
 
 const DEFAULT_PIECES = 144;
@@ -32,6 +38,7 @@ const state = {
   seed: null,         // the cut of the running game, so it can be saved and restored
   pendingSeed: null,  // set before startGame() to use a particular cut (the daily puzzle)
   daily: null,        // the day key while playing that day's daily puzzle
+  mystery: null,      // { name, allowPeek } while the photo is a secret library pick
 };
 
 const $ = (id) => document.getElementById(id);
@@ -63,6 +70,32 @@ function showScreen(screen) {
 
 const scrollToSteps = () => $('setup-main').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+
+initAccount({ onChange: accountChanged });
+
+// Signing in moves this browser's guest progress into the account; signing out shows the
+// browser's own (guest) data again. Everything shown that depends on saved data is refreshed.
+// It also runs once at start-up (signed in or not), which loads the gallery count, the
+// Continue card and the daily card for the first time.
+async function accountChanged(user) {
+  setUser(user);
+  if (user) {
+    try {
+      const guestDays = takeGuestDays();
+      if (guestDays.length) await addAccountDays(guestDays);
+      useAccountDays(await listAccountDays(), (day) => addAccountDays([day]).catch(() => {}));
+      await moveGuestDataToAccount();
+    } catch (err) {
+      console.warn('Moving guest progress into the account stopped:', err.message);
+    }
+  } else {
+    useAccountDays(null);
+  }
+  refreshResume();
+  refreshDaily();
+  listPuzzles().then((puzzles) => showGalleryCount(puzzles.length), () => showGalleryCount(0));
+  if (!galleryScreen.hidden) showGallery();
+}
 
 // The opening animation plays first; the hanging frames drop in as it clears.
 initHero($('hero-cards'), $('hero-ghosts'), { delay: introWillPlay() ? INTRO_REVEAL : 0 });
@@ -112,9 +145,34 @@ const library = createPhotoLibrary(async (photo) => {
 }, () => { $('photo-library').closest('.library').hidden = true; });
 $('photo-library').append(library.element);
 
-async function handleFile(file) {
+// Mystery puzzle: a random library photo (not the one already chosen), kept a secret.
+async function startMystery() {
+  const button = $('mystery-btn');
+  button.disabled = true;
+  try {
+    const photos = await loadLibrary();
+    const choices = photos.filter((p) => !state.mystery || p.name !== state.mystery.name);
+    const pick = (choices.length ? choices : photos)[Math.floor(Math.random() * (choices.length || photos.length))];
+    if (!pick) throw new Error('empty library');
+    library.select(null);
+    await handleFile(await fetchLibraryPhoto(pick), { mystery: { name: pick.name } });
+  } catch {
+    uploadError.textContent = "A mystery photo couldn't be loaded. Try again.";
+    uploadError.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+$('mystery-btn').addEventListener('click', startMystery);
+$('mystery-peek').addEventListener('change', (e) => {
+  if (state.mystery) state.mystery.allowPeek = e.target.checked;
+});
+
+// mystery: { name } to keep this photo a secret (a mystery puzzle).
+async function handleFile(file, { mystery = null } = {}) {
   if (!file) return;
   uploadError.hidden = true;
+  state.mystery = mystery ? { ...mystery, allowPeek: $('mystery-peek').checked } : null;
 
   try {
     const photo = await loadImageFile(file);
@@ -138,7 +196,9 @@ function showPhoto(photo) {
   const megapixels = (width * height / 1e6).toFixed(1);
 
   $('photo-thumb').src = photo.url;
-  $('photo-name').textContent = photo.name;
+  $('photo-name').textContent = state.mystery ? 'Mystery puzzle' : photo.name;
+  photoInfo.classList.toggle('mystery', Boolean(state.mystery));
+  $('mystery-peek-row').hidden = !state.mystery;
   $('photo-res').textContent = `${width} × ${height} px · ${megapixels} MP`;
 
   const badge = $('quality-badge');
@@ -179,7 +239,16 @@ function drawPreview() {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(source, 0, 0, w, h);
+  if (state.mystery) {
+    // Only a heavy blur of the colours, so the picture stays a secret.
+    ctx.filter = 'blur(18px) saturate(.7)';
+    ctx.drawImage(source, -30, -30, w + 60, h + 60);
+    ctx.filter = 'none';
+    ctx.fillStyle = 'rgba(30, 24, 40, .35)';
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    ctx.drawImage(source, 0, 0, w, h);
+  }
 
   const { cols, rows } = state.pieces;
   const lines = cutLines(cols, rows, w, h, seededRandom(cols * 1000 + rows));
@@ -191,6 +260,13 @@ function drawPreview() {
   ctx.restore();
   ctx.strokeStyle = 'rgba(255, 255, 255, .7)';
   ctx.stroke(lines);
+  if (state.mystery) {
+    ctx.fillStyle = 'rgba(255, 255, 255, .92)';
+    ctx.font = `600 ${Math.round(Math.min(w, h) * 0.38)}px Fraunces, Georgia, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', w / 2, h / 2);
+  }
 
   canvas.hidden = false;
   empty.hidden = true;
@@ -401,8 +477,11 @@ async function startGame({ restore = null } = {}) {
   state.pendingSeed = null;
   showScreen(gameScreen);
   showProgress(0);
-  $('game-title').textContent = `${state.pieces.count}-piece puzzle`;
+  $('game-title').textContent = state.mystery ? `Mystery puzzle · ${state.pieces.count} pieces` : `${state.pieces.count}-piece puzzle`;
   $('reference-img').src = state.photo.url;
+  // A mystery puzzle hides the reference picture unless peeking was allowed.
+  referenceBtn.hidden = Boolean(state.mystery && !state.mystery.allowPeek);
+  peeked = Boolean(restore?.peeked);
 
   const countdown = state.timer.mode === 'countdown';
   const limitMs = restore ? restore.limitMs : countdown ? state.timer.minutes * 60000 : null;
@@ -436,6 +515,11 @@ async function startGame({ restore = null } = {}) {
       clearTimeout(saveTimer);
       clearProgress().catch(() => {}).finally(refreshResume);
       showDailyDone();
+      const mysteryNote = $('mystery-note');
+      mysteryNote.hidden = !state.mystery;
+      if (state.mystery) {
+        mysteryNote.textContent = `Mystery revealed: ${state.mystery.name}` + (peeked ? '' : ' · solved without peeking');
+      }
       setPlayControls(false);
       const spare = clock.remaining;
       $('stat-time').textContent = formatTime(clock.elapsed);
@@ -531,6 +615,8 @@ function saveNow() {
     layout: game.serialize(),
     progress: game.progress(),
     daily: state.daily,
+    mystery: state.mystery,
+    peeked,
     savedAt: Date.now(),
   }).catch(() => {});
 }
@@ -559,7 +645,9 @@ async function refreshResume() {
   const percent = Math.round((saved.progress ?? 0) * 100);
   $('resume-pct').textContent = `${percent}%`;
   $('resume-fill').style.width = `${percent}%`;
-  $('resume-title').textContent = saved.daily ? 'Daily puzzle' : saved.name.replace(/\.[a-z0-9]+$/i, '');
+  $('resume-title').textContent = saved.mystery ? 'Mystery puzzle'
+    : saved.daily ? 'Daily puzzle' : saved.name.replace(/\.[a-z0-9]+$/i, '');
+  $('resume-card').classList.toggle('mystery', Boolean(saved.mystery));
   $('resume-meta').textContent = `${saved.pieces.count} pieces · ${formatTime(saved.elapsed)} played · ${savedAgo(saved.savedAt)}`;
   card.hidden = false;
 }
@@ -591,6 +679,8 @@ async function continueSaved() {
     state.table = saved.table;
     state.timer = { ...state.timer, ...saved.timer };
     state.daily = saved.daily ?? null;
+    state.mystery = saved.mystery ?? null;
+    showPhoto(photo); // again, now that it's known whether the photo is a secret
     await startGame({ restore: saved });
   } catch {
     uploadError.textContent = "That puzzle couldn't be opened. Try starting a new one.";
@@ -608,8 +698,6 @@ $('discard-btn').addEventListener('click', async () => {
     refreshResume();
   }
 });
-refreshResume();
-
 /* ---------- Daily puzzle ---------- */
 
 let dailyToday = null; // { key, photo } for today's daily puzzle
@@ -684,6 +772,7 @@ async function startDaily() {
     state.pieces = { count: option.count, cols: option.cols, rows: option.rows, pieceW: option.pieceW, pieceH: option.pieceH, pace: null };
     state.timer = { ...state.timer, mode: 'stopwatch' };
     state.daily = key;
+    state.mystery = null;
     state.pendingSeed = daySeed(key);
     await startGame();
   } catch {
@@ -707,7 +796,6 @@ function showDailyDone() {
 }
 
 $('daily-btn').addEventListener('click', startDaily);
-refreshDaily();
 
 // 3 stars, minus one for leaning on hints and one for many more moves than pieces.
 function starRating(pieceCount, moves, hintsUsed) {
@@ -883,7 +971,11 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- Toolbar tools ---------- */
 
 const referenceBtn = $('reference-btn');
+let peeked = false; // the reference picture was looked at during a mystery puzzle
+
 function setReference(show) {
+  if (show && referenceBtn.hidden) return;
+  if (show && state.mystery) peeked = true;
   $('reference').hidden = !show;
   referenceBtn.setAttribute('aria-pressed', String(show));
 }
@@ -959,6 +1051,8 @@ const ownAudio = new Audio();
 let ownTracks = []; // { name, url } picked by the player this session
 let ownIndex = 0;
 let musicSource = 'mood'; // what play resumes: a generated mood or the player's own files
+let musicStarting = false;
+let musicRequest = 0;
 
 function renderMoods() {
   $('music-moods').replaceChildren(...MOODS.map((mood) => {
@@ -982,25 +1076,44 @@ function renderMoods() {
 }
 
 function isMusicPlaying() {
-  return Boolean(playingMood()) || !ownAudio.paused;
+  return musicStarting || Boolean(playingMood()) || !ownAudio.paused;
 }
 
-function playMusic(source) {
+async function playMusic(source) {
+  const request = ++musicRequest;
   musicSource = source;
   stopMusic();
   ownAudio.pause();
-  if (source === 'own' && ownTracks.length) {
-    ownAudio.src = ownTracks[ownIndex].url;
-    ownAudio.volume = musicSettings.volume;
-    ownAudio.play().catch(() => {});
-  } else {
-    musicSource = 'mood';
-    playMood(musicSettings.mood, musicSettings.volume);
+  musicStarting = true;
+  try {
+    let playback;
+    if (source === 'own' && ownTracks.length) {
+      ownAudio.src = ownTracks[ownIndex].url;
+      ownAudio.volume = musicSettings.volume;
+      playback = ownAudio.play();
+    } else {
+      musicSource = 'mood';
+      playback = playMood(musicSettings.mood, musicSettings.volume);
+    }
+    showMusicState();
+    await playback;
+    if (request !== musicRequest) return;
+    musicStarting = false;
+    showMusicState();
+  } catch (error) {
+    if (request !== musicRequest) return;
+    musicStarting = false;
+    stopMusic();
+    ownAudio.pause();
+    showMusicState();
+    $('music-now').textContent = 'Audio could not start. Press Play to try again.';
+    console.warn('Puzzle music could not start:', error);
   }
-  showMusicState();
 }
 
 function pauseMusic() {
+  musicRequest++;
+  musicStarting = false;
   stopMusic();
   ownAudio.pause();
   showMusicState();
@@ -1117,7 +1230,6 @@ function showGalleryCount(count) {
   badge.textContent = count;
   badge.hidden = count === 0;
 }
-listPuzzles().then((puzzles) => showGalleryCount(puzzles.length), () => {});
 
 let openPuzzle = null; // the puzzle shown in the close-up view
 
@@ -1180,16 +1292,17 @@ viewer.addEventListener('click', (e) => {
   if (outside) viewer.close();
 });
 
-$('viewer-download').addEventListener('click', () => {
+$('viewer-download').addEventListener('click', async () => {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(openPuzzle.image);
+  link.href = URL.createObjectURL(await puzzleImage(openPuzzle));
   link.download = `${openPuzzle.name.replace(/\.[^.]+$/, '')}-puzzle.jpg`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 });
 
 $('viewer-replay').addEventListener('click', async () => {
-  const { image, name } = openPuzzle;
+  const { name } = openPuzzle;
+  const image = await puzzleImage(openPuzzle);
   viewer.close();
   hideGallery();
   window.scrollTo(0, 0);

@@ -1,6 +1,8 @@
 // Background music, generated live with Web Audio: no audio files, nothing downloaded,
 // and no licences to worry about. Each mood is a small generative piece that never repeats exactly.
 
+import { getAudioContext, resumeAudio } from './audio.js';
+
 const SETTINGS_KEY = 'puzzle-music';
 const LOOKAHEAD = 1.2; // seconds of notes scheduled ahead, so background tabs don't stutter
 
@@ -9,6 +11,7 @@ let master = null;
 let reverb = null;
 let noise = null;
 let current = null; // { id, stop }
+let playRequest = 0;
 
 /* ---------- Settings ---------- */
 
@@ -32,8 +35,9 @@ export function saveSettings(settings) {
 /* ---------- Audio plumbing ---------- */
 
 function setup(volume) {
-  if (ctx) return;
-  ctx = new AudioContext();
+  const shared = getAudioContext();
+  if (ctx === shared) return;
+  ctx = shared;
   master = ctx.createGain();
   master.gain.value = volume;
   const limiter = ctx.createDynamicsCompressor();
@@ -416,10 +420,15 @@ export const MOODS = [
 
 /* ---------- Play / stop ---------- */
 
-export function playMood(id, volume) {
-  setup(volume);
-  if (ctx.state === 'suspended') ctx.resume();
+export async function playMood(id, volume) {
   stopMusic();
+  const request = playRequest;
+  // Resume within the click handler, then schedule notes only once audio runs.
+  const ready = resumeAudio();
+  await ready;
+  if (request !== playRequest) return;
+  setup(volume);
+  setVolume(volume);
   const mood = MOODS.find((m) => m.id === id) ?? MOODS[0];
   const bus = createBus(mood.reverb);
   const stopMood = mood.start(bus);
@@ -438,6 +447,7 @@ export function playMood(id, volume) {
 }
 
 export function stopMusic() {
+  playRequest++;
   current?.stop();
   current = null;
 }

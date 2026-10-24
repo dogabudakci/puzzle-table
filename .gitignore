@@ -1,0 +1,5 @@
+# Player accounts database: never commit it
+data/
+
+# Python bytecode
+__pycache__/

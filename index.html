@@ -62,11 +62,14 @@
     <header class="site-header">
       <div class="site-header-inner">
         <span class="logo"><svg class="logo-mark"><use href="#i-logo"/></svg>Puzzle Table</span>
-        <button type="button" class="btn ghost" id="open-gallery">
-          <svg class="icon"><use href="#i-gallery"/></svg>
-          My gallery
-          <span class="count" id="gallery-count" hidden></span>
-        </button>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="open-gallery">
+            <svg class="icon"><use href="#i-gallery"/></svg>
+            My gallery
+            <span class="count" id="gallery-count" hidden></span>
+          </button>
+          <button type="button" class="btn secondary account-btn" id="account-btn">Sign in</button>
+        </div>
       </div>
     </header>
 
@@ -132,7 +135,7 @@
             </label>
 
             <div class="photo-info" id="photo-info" hidden>
-              <img class="photo-thumb" id="photo-thumb" alt="">
+              <div class="photo-thumb-wrap"><img class="photo-thumb" id="photo-thumb" alt=""></div>
               <div class="photo-details">
                 <div class="photo-name" id="photo-name"></div>
                 <div class="photo-res" id="photo-res"></div>
@@ -143,6 +146,20 @@
               </div>
               <button type="button" class="btn secondary small" id="change-photo">Replace</button>
             </div>
+
+            <label class="mystery-peek" id="mystery-peek-row" hidden>
+              <input type="checkbox" id="mystery-peek">
+              <span><strong>Allow peeking</strong> Show the reference picture during the game (R)</span>
+            </label>
+
+            <button type="button" class="mystery-btn" id="mystery-btn">
+              <span class="mystery-card" aria-hidden="true">?</span>
+              <span class="mystery-text">
+                <strong>Mystery puzzle</strong>
+                <span>A random photo from the library, kept secret until it’s finished.</span>
+              </span>
+              <svg class="icon"><use href="#i-back"/></svg>
+            </button>
 
             <div class="library">
               <p class="library-title">Or pick one from our library</p>
@@ -357,6 +374,7 @@
       <div class="result-stars" id="result-stars" role="img"></div>
       <p class="best-badge" id="best-badge" hidden></p>
       <p class="daily-note" id="daily-note" hidden></p>
+      <p class="mystery-note" id="mystery-note" hidden></p>
       <div class="result-stats">
         <div><span>Time</span><strong id="stat-time"></strong></div>
         <div><span>Moves</span><strong id="stat-moves"></strong></div>
@@ -402,6 +420,111 @@
       <div class="floor" id="floor"></div>
     </div>
   </div>
+
+  <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-title">
+    <button type="button" class="icon-btn account-close" id="account-close" aria-label="Close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+
+    <!-- Signed out: sign in or create an account -->
+    <section id="account-guest">
+      <h2 id="account-title">Welcome</h2>
+      <p class="account-sub">Sign in to keep your puzzles, streak and gallery with your account.</p>
+      <div class="account-tabs" role="tablist">
+        <button type="button" role="tab" id="tab-login" aria-selected="true">Sign in</button>
+        <button type="button" role="tab" id="tab-signup" aria-selected="false">Create account</button>
+      </div>
+      <form class="account-form" id="account-form" novalidate>
+        <label>Email or username
+          <input type="text" id="account-identifier" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="254">
+        </label>
+        <label>Password
+          <input type="password" id="account-password" autocomplete="current-password" required maxlength="128">
+        </label>
+        <p class="account-hint" id="account-hint" hidden>At least 10 characters. A short phrase of a few words is easy to remember and hard to guess.</p>
+        <p class="account-error" id="account-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large" id="account-submit">Sign in</button>
+        <button type="button" class="link-btn" id="forgot-btn">Forgot your password?</button>
+      </form>
+    </section>
+
+    <!-- Forgot password: ask for a reset link -->
+    <section id="account-forgot" hidden>
+      <h2>Reset your password</h2>
+      <p class="account-sub">Enter the email of your account. If it’s confirmed, we’ll send you a link to choose a new password.</p>
+      <form class="account-form" id="forgot-form" novalidate>
+        <label>Email <input type="email" id="forgot-email" autocomplete="email" required maxlength="254"></label>
+        <p class="account-note" id="forgot-done" hidden></p>
+        <p class="account-error" id="forgot-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large">Send reset link</button>
+        <button type="button" class="link-btn" id="forgot-back">Back to sign in</button>
+      </form>
+    </section>
+
+    <!-- From the emailed link: choose a new password -->
+    <section id="account-reset" hidden>
+      <h2>Choose a new password</h2>
+      <p class="account-sub">This signs you out on every other device.</p>
+      <form class="account-form" id="reset-form" novalidate>
+        <input type="text" autocomplete="username" readonly hidden tabindex="-1">
+        <label>New password <input type="password" id="reset-password" autocomplete="new-password" required maxlength="128"></label>
+        <p class="account-hint">At least 10 characters. A short phrase of a few words is easy to remember and hard to guess.</p>
+        <p class="account-error" id="reset-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large">Save new password</button>
+      </form>
+    </section>
+
+    <!-- A short message, e.g. after confirming an email -->
+    <section id="account-message" hidden>
+      <h2 id="account-message-title"></h2>
+      <p class="account-sub" id="account-message-text"></p>
+      <button type="button" class="btn primary" id="account-message-ok">OK</button>
+    </section>
+
+    <!-- Signed in -->
+    <section id="account-member" hidden>
+      <h2>Your account</h2>
+      <p class="account-sub">Signed in as <strong id="account-name"></strong></p>
+      <p class="email-status" id="email-status"></p>
+      <div class="account-row">
+        <button type="button" class="btn secondary" id="logout-btn">Sign out</button>
+        <button type="button" class="btn ghost" id="resend-btn" hidden>Resend confirmation email</button>
+      </div>
+
+      <details class="account-more" id="email-more">
+        <summary id="email-summary">Email for password recovery</summary>
+        <form class="account-form" id="email-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <label>Email <input type="email" id="email-new" autocomplete="email" required maxlength="254"></label>
+          <label>Your password <input type="password" id="email-password" autocomplete="current-password" required maxlength="128"></label>
+          <p class="account-error" id="email-error" role="alert" hidden></p>
+          <button type="submit" class="btn primary">Send confirmation link</button>
+        </form>
+      </details>
+
+      <details class="account-more">
+        <summary>Change password</summary>
+        <form class="account-form" id="password-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <label>Current password <input type="password" id="pw-current" autocomplete="current-password" required maxlength="128"></label>
+          <label>New password <input type="password" id="pw-new" autocomplete="new-password" required maxlength="128"></label>
+          <p class="account-error" id="pw-error" role="alert" hidden></p>
+          <button type="submit" class="btn primary">Change password</button>
+        </form>
+      </details>
+
+      <details class="account-more">
+        <summary>Delete account</summary>
+        <form class="account-form" id="delete-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <p class="account-sub">This removes your account for good. Puzzles saved on this device stay here.</p>
+          <label>Password <input type="password" id="delete-password" autocomplete="current-password" required maxlength="128"></label>
+          <p class="account-error" id="delete-error" role="alert" hidden></p>
+          <button type="submit" class="btn danger">Delete my account</button>
+        </form>
+      </details>
+    </section>
+  </dialog>
 
   <dialog class="viewer" id="viewer" aria-label="Puzzle details">
     <button type="button" class="icon-btn light viewer-close" id="viewer-close" aria-label="Close">

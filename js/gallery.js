@@ -34,7 +34,7 @@ function createFrame(puzzle) {
   const mat = document.createElement('div');
   mat.className = 'frame-mat';
   const img = document.createElement('img');
-  img.src = imageUrl(puzzle.image);
+  img.src = puzzle.imageUrl ?? imageUrl(puzzle.image); // account pictures load from the server
   img.width = puzzle.imageW;
   img.height = puzzle.imageH;
   img.alt = puzzle.name;

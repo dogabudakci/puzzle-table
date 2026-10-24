@@ -285,6 +285,7 @@ export class PuzzleGame {
       startX: group.x, startY: group.y, lastX: e.clientX, speed: 0,
     };
     this.animateLift(group, LIFT_SCALE);
+    playDrop(); // Reuse the existing cardboard tap when a piece is picked up.
     try {
       this.table.setPointerCapture(e.pointerId); // keep receiving moves even off the table
     } catch {

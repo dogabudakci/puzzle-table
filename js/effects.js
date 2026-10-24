@@ -1,7 +1,8 @@
 // Sounds (synthesised with Web Audio, no files) and the confetti celebration.
 
+import { resumeAudio } from './audio.js';
+
 const SOUND_KEY = 'puzzle-sound';
-let audio = null;
 let soundOn = readSoundSetting();
 
 function readSoundSetting() {
@@ -25,16 +26,21 @@ export function setSoundOn(on) {
   }
 }
 
-function context() {
-  audio ??= new AudioContext();
-  if (audio.state === 'suspended') audio.resume();
-  return audio;
+async function context() {
+  try {
+    const audio = await resumeAudio();
+    return soundOn ? audio : null;
+  } catch (error) {
+    console.warn('Puzzle sound could not start:', error);
+    return null;
+  }
 }
 
 // A short wooden "click", like two cardboard pieces pressing together.
-export function playSnap() {
+export async function playSnap() {
   if (!soundOn) return;
-  const ctx = context();
+  const ctx = await context();
+  if (!ctx) return;
   const length = Math.floor(ctx.sampleRate * 0.05);
   const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
   const data = buffer.getChannelData(0);
@@ -53,9 +59,10 @@ export function playSnap() {
 }
 
 // A soft, low tap when a piece is put down without joining anything.
-export function playDrop() {
+export async function playDrop() {
   if (!soundOn) return;
-  const ctx = context();
+  const ctx = await context();
+  if (!ctx) return;
   const tap = noise(ctx, 0.04, (t) => Math.pow(1 - t, 6));
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
@@ -79,9 +86,10 @@ function noise(ctx, seconds, shape) {
 
 // Opening the pouch: a soft paper sound, like unfolding a paper bag. A gentle papery slide,
 // a few quiet crinkles, then the pieces pattering softly onto the table over `spillSeconds`.
-export function playPouchOpen(pieceCount, spillSeconds = 1.4) {
+export async function playPouchOpen(pieceCount, spillSeconds = 1.4) {
   if (!soundOn) return;
-  const ctx = context();
+  const ctx = await context();
+  if (!ctx) return;
   const now = ctx.currentTime;
   const out = ctx.createGain();
   out.gain.value = 0.7; // overall level: one place to make the whole sound louder or softer
@@ -130,9 +138,10 @@ export function playPouchOpen(pieceCount, spillSeconds = 1.4) {
 }
 
 // A rising arpeggio for the finished puzzle.
-export function playComplete() {
+export async function playComplete() {
   if (!soundOn) return;
-  const ctx = context();
+  const ctx = await context();
+  if (!ctx) return;
   const notes = [523.25, 659.25, 783.99, 1046.5];
   notes.forEach((freq, i) => {
     const t = ctx.currentTime + i * 0.12;
