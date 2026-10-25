@@ -4,6 +4,36 @@
 
 const LIBRARY_DIR = 'assets/library';
 
+// A library picture's address: WebP when there is one (smaller), and the photo's hash, so the
+// browser can keep it for good and still notices when the photo is replaced.
+function pictureUrl(photo, suffix = '') {
+  const ext = photo.webp ? 'webp' : 'jpg';
+  return `${LIBRARY_DIR}/${photo.id}${suffix}.${ext}${photo.hash ? `?v=${photo.hash}` : ''}`;
+}
+
+export const libraryThumbUrl = (photo) => pictureUrl(photo, '-thumb');
+
+// Thumbnails load only when their grid is about to scroll into view (the browser's own lazy
+// loading starts far too early here, fetching all of them with the start page).
+const nearView = 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.src = entry.target.dataset.src;
+      nearView.unobserve(entry.target);
+    }
+  }, { rootMargin: '300px' })
+  : null;
+
+function lazyImage(img, src) {
+  if (!nearView) {
+    img.src = src;
+    return;
+  }
+  img.dataset.src = src;
+  nearView.observe(img);
+}
+
 export async function loadLibrary() {
   try {
     const response = await fetch(`${LIBRARY_DIR}/library.json`, { cache: 'no-store' });
@@ -17,10 +47,10 @@ export async function loadLibrary() {
 
 // Fetches a library photo as a File, so it goes through the same checks as an upload.
 export async function fetchLibraryPhoto(photo) {
-  const response = await fetch(`${LIBRARY_DIR}/${photo.id}.jpg`);
+  const response = await fetch(pictureUrl(photo));
   if (!response.ok) throw new Error(response.statusText);
   const blob = await response.blob();
-  return new File([blob], `${photo.name}.jpg`, { type: 'image/jpeg' });
+  return new File([blob], `${photo.name}.${photo.webp ? 'webp' : 'jpg'}`, { type: blob.type || 'image/jpeg' });
 }
 
 // A grid of thumbnails, filled once the list has loaded; `onEmpty` runs if there are no photos.
@@ -47,9 +77,8 @@ export function createPhotoLibrary(onPick, onEmpty) {
       button.dataset.id = photo.id;
 
       const thumb = document.createElement('img');
-      thumb.src = `${LIBRARY_DIR}/${photo.id}-thumb.jpg`;
+      lazyImage(thumb, libraryThumbUrl(photo));
       thumb.alt = '';
-      thumb.loading = 'lazy';
       const name = document.createElement('span');
       name.textContent = photo.name;
       button.append(thumb, name);

@@ -49,6 +49,7 @@ export function initAccount({ onChange } = {}) {
       $('account-name').textContent = nameOf(user);
       showEmailStatus();
     }
+    $('admin-link').hidden = !user?.admin;
     // Tells password managers which account the password forms belong to.
     for (const field of document.querySelectorAll('.account-username')) field.value = user ? nameOf(user) : '';
     if (changed || initial) onChange?.(user);
@@ -243,4 +244,7 @@ export function initAccount({ onChange } = {}) {
     showUser(current);
     handleLink(current);
   }, () => showUser(null));
+
+  // The same player with new details (e.g. a username chosen in the Friends dialog).
+  return { update: (next) => showUser(next) };
 }

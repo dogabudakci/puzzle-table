@@ -4,8 +4,17 @@
 // corner would be; each piece sits inside it at its own place in the finished picture. So
 // two groups fit together exactly when their positions are equal, and merging them just
 // means moving the pieces of one into the other.
+//
+// The table can be zoomed and panned (pinch, wheel, or dragging the empty table). Everything on
+// it lives in `world`, an element as big as the table that the view scales and moves; positions
+// are always in world coordinates, so zooming never changes where anything is. A shared table
+// has a fixed world size instead, the same on every screen, shown scaled to fit.
+//
+// Playing together with a friend, the same table is shown on both screens. Positions are then
+// exchanged in a screen-independent form (see normalized()), the `shared` callbacks report what
+// this player does, and the remote*() methods show what the friend does.
 
-import { cutPuzzle, shuffle, seededRandom } from './cutter.js';
+import { cutPuzzle, shuffle, seededRandom, redrawPieces, maxResolution } from './cutter.js';
 import { puzzleSizeOnScreen } from './pieceOptions.js';
 import { getTable, tableTextureUrl } from './textures.js';
 import { createPouch } from './pouch.js';
@@ -16,12 +25,33 @@ const SNAP_RATIO = 0.25;  // how close (relative to piece size) counts as "fits"
 const LIFT_SCALE = 1.045; // a picked-up piece grows this much
 const MAX_TILT = 7;       // degrees a single piece leans towards the drag direction
 const UNDO_LIMIT = 30;
+export const MAX_ZOOM = 4;
+const EDGE_PAN = 48;      // px from the screen edge where dragging a piece scrolls a zoomed table
 
 export class PuzzleGame {
   // seed: makes the cut repeatable, so a saved puzzle comes back with the same shapes.
   // restore: a saved layout from serialize(); the pieces start on the table, without the pouch.
-  constructor(tableEl, photo, { cols, rows }, tableId, { onSpill, onProgress, onComplete, onChange, seed, restore } = {}) {
+  // autoPouch: the pouch can't be clicked; it opens with openPouch() (live games start together).
+  // shared: { onGrab(group), onMove(group), onDrop(group) } while playing on a friend's table.
+  // onZoom(zoom): the view's zoom changed (1 = the whole table).
+  // worldSize: { width, height } for a table of fixed size (a shared one); otherwise it's the screen's.
+  constructor(tableEl, photo, { cols, rows }, tableId, {
+    onSpill, onProgress, onComplete, onChange, onZoom, seed, restore, autoPouch = false, shared = null, worldSize = null,
+  } = {}) {
     this.table = tableEl;
+    this.world = document.createElement('div');
+    this.world.className = 'world';
+    this.fixedWorld = worldSize;
+    if (worldSize) {
+      this.world.classList.add('fixed');
+      this.world.style.width = `${worldSize.width}px`;
+      this.world.style.height = `${worldSize.height}px`;
+    }
+    this.table.append(this.world);
+    this.view = { x: 0, y: 0, zoom: 1 };
+    this.onZoom = onZoom;
+    this.pointers = new Map(); // touches/pointers on the table that aren't moving a piece (pan, pinch)
+    this.pan = null;
     this.onChange = onChange; // called after anything worth saving changes
     this.onSpill = onSpill;
     this.onProgress = onProgress;
@@ -35,10 +65,12 @@ export class PuzzleGame {
     this.moves = 0;      // pick-ups that moved a piece
     this.history = [];   // earlier positions, for undo
     this.motion = null;  // the springy lift/tilt of the group in hand (or just dropped)
+    this.shared = shared;
+    this.remoteHeld = new Set(); // pieces in the friend's hand
+    this.spillLayout = null;     // where the pieces land when the pouch opens (a shared table)
     this.setTable(tableId);
 
-    const view = this.table.getBoundingClientRect();
-    const size = puzzleSizeOnScreen(photo.canvas.width / photo.canvas.height, view.width, view.height);
+    const size = puzzleSizeOnScreen(photo.canvas.width / photo.canvas.height, this.worldWidth, this.worldHeight);
     this.puzzle = cutPuzzle(photo.canvas, cols, rows, size.width, size.height, seededRandom(seed ?? Date.now()));
     const { pieces, pieceW, pieceH } = this.puzzle;
     this.snapDistance = Math.max(8, Math.min(pieceW, pieceH) * SNAP_RATIO);
@@ -46,7 +78,7 @@ export class PuzzleGame {
     // A faint mat in the middle marks the empty work area where the puzzle fits.
     this.mat = document.createElement('div');
     this.mat.className = 'work-mat';
-    this.table.append(this.mat);
+    this.world.append(this.mat);
     this.placeMat();
 
     for (const piece of pieces) {
@@ -62,7 +94,12 @@ export class PuzzleGame {
       // Appended in random order so the stacking is mixed too.
       this.table.classList.add('in-pouch');
       for (const piece of shuffle(pieces)) this.addGroup([piece]);
-      this.table.append(createPouch(pieces.length, (mouth) => this.spill(mouth)));
+      this.pouch = createPouch(pieces.length, (mouth) => this.spill(mouth));
+      if (autoPouch) {
+        this.pouch.disabled = true;
+        this.pouch.querySelector('.pouch-hint').textContent = 'Get ready…';
+      }
+      this.table.append(this.pouch);
     }
 
     this.handlers = {
@@ -70,13 +107,29 @@ export class PuzzleGame {
       pointermove: (e) => this.pointerMove(e),
       pointerup: (e) => this.pointerUp(e),
       pointercancel: (e) => this.pointerUp(e),
+      wheel: (e) => this.wheel(e),
+      // Safari on a Mac reports trackpad pinches as gestures rather than ctrl + wheel.
+      gesturestart: (e) => this.gesture(e),
+      gesturechange: (e) => this.gesture(e),
     };
-    for (const [type, fn] of Object.entries(this.handlers)) this.table.addEventListener(type, fn);
+    for (const [type, fn] of Object.entries(this.handlers)) {
+      this.table.addEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined);
+    }
     this.onResize = () => {
       this.placeMat();
       for (const group of this.groups) this.placeGroup(group, group.x, group.y);
+      this.setView(this.view.x, this.view.y, Math.max(this.view.zoom, this.fitZoom()));
     };
     window.addEventListener('resize', this.onResize);
+    this.setView(0, 0, this.fitZoom());
+  }
+
+  get worldWidth() {
+    return this.fixedWorld?.width ?? this.table.clientWidth;
+  }
+
+  get worldHeight() {
+    return this.fixedWorld?.height ?? this.table.clientHeight;
   }
 
   addGroup(pieces) {
@@ -87,7 +140,7 @@ export class PuzzleGame {
     const group = { el, x: 0, y: 0, scale: 1, tilt: 0, pieces, bounds: groupBounds(pieces, this.puzzle) };
     for (const piece of pieces) piece.group = group;
     this.groups.add(group);
-    this.table.append(el);
+    this.world.append(el);
     return group;
   }
 
@@ -131,13 +184,38 @@ export class PuzzleGame {
     this.ready = true;
   }
 
+  // A group's position relative to the puzzle's place, in puzzle sizes: the same on every screen.
+  normalized(group) {
+    const { x: wx, y: wy, width, height } = this.workArea();
+    return { nx: (group.x - wx) / width, ny: (group.y - wy) / height };
+  }
+
+  fromNormalized(nx, ny) {
+    const { x: wx, y: wy, width, height } = this.workArea();
+    return { x: wx + nx * width, y: wy + ny * height };
+  }
+
+  // Where the pieces would land on this screen, for a shared table's starting layout.
+  startLayout() {
+    const spots = this.scatterPositions();
+    return this.puzzle.pieces.map((piece) => {
+      const { nx, ny } = this.normalized({ x: spots[piece.index].x - piece.ox, y: spots[piece.index].y - piece.oy });
+      return { pieces: [piece.index], nx, ny };
+    });
+  }
+
   /* ---------- Pouch ---------- */
+
+  openPouch() {
+    if (!this.pouch?.isConnected) return;
+    this.pouch.disabled = false;
+    this.pouch.click();
+  }
 
   // Throws every piece out of the pouch's mouth (viewport coords) onto its scattered spot.
   spill(mouth) {
-    const view = this.table.getBoundingClientRect();
-    const from = { x: mouth.x - view.left, y: mouth.y - view.top };
-    const targets = this.scatterPositions();
+    const from = this.toWorld(mouth.x, mouth.y);
+    const targets = this.spillLayout ? this.layoutTargets(this.spillLayout) : this.scatterPositions();
     const groups = shuffle([...this.groups]);
     const stagger = Math.min(30, SPILL_TIME / groups.length);
     const { pieceW, pieceH, pad } = this.puzzle;
@@ -178,11 +256,24 @@ export class PuzzleGame {
     this.onSpill?.();
   }
 
+  // Landing spots (canvas positions) for single pieces from a normalized layout.
+  layoutTargets(layout) {
+    const { pieces } = this.puzzle;
+    const targets = this.scatterPositions(); // for any piece the layout doesn't mention
+    for (const entry of layout) {
+      const piece = pieces[entry.pieces[0]];
+      if (!piece) continue;
+      const { x, y } = this.fromNormalized(entry.nx, entry.ny);
+      targets[piece.index] = { x: x + piece.ox, y: y + piece.oy };
+    }
+    return targets;
+  }
+
   // The middle of the table, where the finished puzzle goes (table coords).
   workArea() {
     const { width, height } = this.puzzle;
-    const x = (this.table.clientWidth - width) / 2;
-    const y = (this.table.clientHeight - height) / 2;
+    const x = (this.worldWidth - width) / 2;
+    const y = (this.worldHeight - height) / 2;
     return { x, y, width, height };
   }
 
@@ -202,7 +293,7 @@ export class PuzzleGame {
   // piece, the grid gets finer (so pieces overlap a little) before giving up on the gap.
   scatterPositions() {
     const { pieces, pieceW, pieceH, pad } = this.puzzle;
-    const view = this.table.getBoundingClientRect();
+    const view = { width: this.worldWidth, height: this.worldHeight };
     const margin = 12;
     const areaW = view.width - margin * 2;
     const areaH = view.height - margin * 2;
@@ -255,12 +346,14 @@ export class PuzzleGame {
 
   // The piece whose actual shape (not just its rectangular canvas) is under the pointer.
   pieceAt(clientX, clientY) {
-    const { pieces, dpr } = this.puzzle;
+    const { pieces } = this.puzzle;
     for (const el of document.elementsFromPoint(clientX, clientY)) {
       if (!el.classList.contains('piece')) continue;
       const piece = pieces[el.dataset.index];
       const rect = el.getBoundingClientRect();
-      if (piece.ctx.isPointInPath(piece.path, (clientX - rect.left) * dpr, (clientY - rect.top) * dpr)) {
+      // Screen pixels to canvas pixels, whatever the zoom or lift.
+      const scale = piece.canvas.width / rect.width;
+      if (piece.ctx.isPointInPath(piece.path, (clientX - rect.left) * scale, (clientY - rect.top) * scale)) {
         return piece;
       }
     }
@@ -268,24 +361,34 @@ export class PuzzleGame {
   }
 
   pointerDown(e) {
-    if (!this.ready || this.paused || this.drag || e.button > 0) return;
-    const piece = this.pieceAt(e.clientX, e.clientY);
-    if (!piece) return;
+    if (e.button > 0 || e.target.closest('.pouch')) return;
+    const piece = this.ready && !this.paused && !this.drag && this.pointers.size === 0
+      ? this.pieceAt(e.clientX, e.clientY) : null;
+    if (!piece) {
+      if (!this.drag) this.startPan(e); // the empty table (or a second finger): move the view
+      return;
+    }
     e.preventDefault();
+    if (this.isRemoteHeld(piece.group)) {
+      // The friend has it in hand: a small shake says "not now".
+      piece.group.el.animate([{ translate: '0' }, { translate: '-4px' }, { translate: '4px' }, { translate: '0' }], { duration: 220 });
+      return;
+    }
     this.clearHint(); // the line would point at the old spot once a piece moves
 
     const { group } = piece;
     group.el.style.zIndex = ++this.topZ;
     group.el.classList.add('lifted');
     // Lean and grow around the point that was grabbed.
-    const view = this.table.getBoundingClientRect();
-    group.el.style.transformOrigin = `${e.clientX - view.left - group.x}px ${e.clientY - view.top - group.y}px`;
+    const at = this.toWorld(e.clientX, e.clientY);
+    group.el.style.transformOrigin = `${at.x - group.x}px ${at.y - group.y}px`;
     this.drag = {
-      group, pointerId: e.pointerId, dx: e.clientX - group.x, dy: e.clientY - group.y,
-      startX: group.x, startY: group.y, lastX: e.clientX, speed: 0,
+      group, pointerId: e.pointerId, dx: at.x - group.x, dy: at.y - group.y,
+      startX: group.x, startY: group.y, lastX: e.clientX, speed: 0, clientX: e.clientX, clientY: e.clientY,
     };
     this.animateLift(group, LIFT_SCALE);
     playDrop(); // Reuse the existing cardboard tap when a piece is picked up.
+    this.shared?.onGrab(group);
     try {
       this.table.setPointerCapture(e.pointerId); // keep receiving moves even off the table
     } catch {
@@ -294,28 +397,215 @@ export class PuzzleGame {
   }
 
   pointerMove(e) {
+    if (this.pointers.has(e.pointerId)) return this.movePan(e);
     if (this.drag?.pointerId !== e.pointerId) return;
     const { drag } = this;
     drag.speed = drag.speed * 0.6 + (e.clientX - drag.lastX) * 0.4; // smoothed sideways speed
     drag.lastX = e.clientX;
-    this.placeGroup(drag.group, e.clientX - drag.dx, e.clientY - drag.dy);
+    drag.clientX = e.clientX;
+    drag.clientY = e.clientY;
+    this.moveDragged();
+    this.edgePan();
+  }
+
+  moveDragged() {
+    const { drag } = this;
+    const at = this.toWorld(drag.clientX, drag.clientY);
+    this.placeGroup(drag.group, at.x - drag.dx, at.y - drag.dy);
+    this.shared?.onMove(drag.group);
   }
 
   pointerUp(e) {
+    if (this.pointers.has(e.pointerId)) return this.endPan(e);
     if (this.drag?.pointerId !== e.pointerId) return;
+    cancelAnimationFrame(this.edgeFrame);
+    this.edgeFrame = null;
     const { group, startX, startY } = this.drag;
     this.drag = null;
     group.el.classList.remove('lifted');
     const moved = Math.hypot(group.x - startX, group.y - startY) > 3;
     if (moved) {
       this.moves++;
-      this.history.push({ group, x: startX, y: startY });
+      if (!this.shared) this.history.push({ group, x: startX, y: startY }); // no undo on a shared table
       if (this.history.length > UNDO_LIMIT) this.history.shift();
     }
     // Settle back down with a little bounce.
     this.animateLift(group, 1);
+    const { pieces } = group;
     if (!this.trySnap(group) && moved) playDrop();
+    if (this.shared) {
+      // The group in hand, with any it just joined, and where it ended up.
+      const result = pieces[0].group;
+      this.shared.onDrop({ pieces: result.pieces.map((p) => p.index), ...this.normalized(result) });
+    }
     if (moved && this.groups.size > 1) this.onChange?.();
+  }
+
+  // Lets go of the piece in hand without moving it (the friend got to it first).
+  cancelDrag() {
+    if (!this.drag) return;
+    const { group, startX, startY } = this.drag;
+    this.drag = null;
+    group.el.classList.remove('lifted');
+    this.placeGroup(group, startX, startY);
+    this.animateLift(group, 1);
+  }
+
+  /* ---------- Zoom and pan ---------- */
+
+  // Screen (client) coordinates to world coordinates.
+  toWorld(clientX, clientY) {
+    const rect = this.table.getBoundingClientRect();
+    const { x, y, zoom } = this.view;
+    return { x: (clientX - rect.left - x) / zoom, y: (clientY - rect.top - y) / zoom };
+  }
+
+  // The zoom at which the whole table just fits on screen (1, unless the table has a fixed size).
+  fitZoom() {
+    if (!this.fixedWorld) return 1;
+    return Math.min(this.table.clientWidth / this.worldWidth, this.table.clientHeight / this.worldHeight);
+  }
+
+  // Moves and scales the view. The table always fills the screen, or is centred if it's smaller.
+  setView(x, y, zoom, { animate = false } = {}) {
+    const fit = this.fitZoom();
+    zoom = clamp(zoom, fit, fit * MAX_ZOOM);
+    const place = (pos, screen, size) => (size <= screen ? (screen - size) / 2 : clamp(pos, screen - size, 0));
+    x = place(x, this.table.clientWidth, this.worldWidth * zoom);
+    y = place(y, this.table.clientHeight, this.worldHeight * zoom);
+    const changed = zoom !== this.view.zoom;
+    if (changed) this.sharpen(zoom);
+    if (animate) {
+      this.world.animate([{ transform: this.world.style.transform || 'none' }, { transform: viewTransform(x, y, zoom) }],
+        { duration: 350, easing: 'cubic-bezier(.3, .7, .2, 1)' });
+    }
+    this.view = { x, y, zoom };
+    this.world.style.transform = viewTransform(x, y, zoom);
+    this.table.classList.toggle('zoomed', zoom > fit * 1.001);
+    if (changed) this.onZoom?.(zoom / fit);
+  }
+
+  // Zooms by `factor` around a screen point (the middle of the table if none is given).
+  zoomBy(factor, clientX, clientY, options) {
+    const rect = this.table.getBoundingClientRect();
+    const cx = (clientX ?? rect.left + rect.width / 2) - rect.left;
+    const cy = (clientY ?? rect.top + rect.height / 2) - rect.top;
+    const { x, y, zoom } = this.view;
+    const fit = this.fitZoom();
+    const next = clamp(zoom * factor, fit, fit * MAX_ZOOM);
+    // Keep the world point under (cx, cy) where it is.
+    this.setView(cx - (cx - x) * (next / zoom), cy - (cy - y) * (next / zoom), next, options);
+  }
+
+  // Once the zoom settles, redraws the pieces as sharp as the new size needs.
+  sharpen(zoom) {
+    clearTimeout(this.sharpenTimer);
+    this.sharpenTimer = setTimeout(async () => {
+      const dpr = window.devicePixelRatio || 1;
+      const wanted = Math.max(dpr, Math.min(maxResolution(this.puzzle), dpr * Math.ceil(zoom * 2) / 2));
+      if (Math.abs(wanted - this.puzzle.dpr) < 0.25) return;
+      const run = (this.sharpenRun ?? 0) + 1;
+      this.sharpenRun = run;
+      await redrawPieces(this.puzzle, wanted, () => this.sharpenRun !== run || this.destroyed);
+    }, 300);
+  }
+
+  resetView(options = { animate: true }) {
+    this.setView(0, 0, this.fitZoom(), options);
+  }
+
+  // Pinching on a trackpad (or ctrl + wheel) and mouse wheels zoom; two-finger scrolling pans.
+  wheel(e) {
+    if (this.table.classList.contains('in-pouch')) return;
+    e.preventDefault();
+    const mouseWheel = e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY));
+    if (e.ctrlKey || mouseWheel) {
+      const step = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+      this.zoomBy(Math.exp(-clamp(step, -100, 100) * (e.ctrlKey ? 0.01 : 0.002)), e.clientX, e.clientY);
+    } else {
+      this.setView(this.view.x - e.deltaX, this.view.y - e.deltaY, this.view.zoom);
+    }
+    if (this.drag) this.moveDragged();
+  }
+
+  gesture(e) {
+    e.preventDefault(); // otherwise Safari zooms the whole page
+    if (this.pointers.size || this.table.classList.contains('in-pouch')) return; // touch pinches are handled as pointers
+    if (e.type === 'gesturestart') {
+      this.gestureZoom = this.view.zoom;
+      return;
+    }
+    this.zoomBy((this.gestureZoom * e.scale) / this.view.zoom, e.clientX, e.clientY);
+  }
+
+  startPan(e) {
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    this.pan = this.panStart();
+    this.table.classList.add('panning');
+    try {
+      this.table.setPointerCapture(e.pointerId);
+    } catch {
+      // The pointer is already gone.
+    }
+  }
+
+  // Where the fingers are now and how far apart, so moving and pinching are relative to this.
+  panStart() {
+    const points = [...this.pointers.values()];
+    const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    const spread = points.length > 1 ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y) : 0;
+    return { cx, cy, spread, view: { ...this.view } };
+  }
+
+  movePan(e) {
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const now = this.panStart();
+    const { pan } = this;
+    if (now.spread && pan.spread) {
+      // Two fingers: zoom around the point between them, and follow them as they move.
+      const fit = this.fitZoom();
+      const zoom = clamp(pan.view.zoom * (now.spread / pan.spread), fit, fit * MAX_ZOOM);
+      const rect = this.table.getBoundingClientRect();
+      const sx = pan.cx - rect.left;
+      const sy = pan.cy - rect.top;
+      const k = zoom / pan.view.zoom;
+      this.setView(sx - (sx - pan.view.x) * k + (now.cx - pan.cx), sy - (sy - pan.view.y) * k + (now.cy - pan.cy), zoom);
+    } else {
+      this.setView(pan.view.x + now.cx - pan.cx, pan.view.y + now.cy - pan.cy, pan.view.zoom);
+    }
+  }
+
+  endPan(e) {
+    this.pointers.delete(e.pointerId);
+    if (this.pointers.size) {
+      this.pan = this.panStart(); // one finger lifted: carry on panning with the other
+    } else {
+      this.pan = null;
+      this.table.classList.remove('panning');
+    }
+  }
+
+  // Dragging a piece near the edge of a zoomed table scrolls it, so pieces can go anywhere.
+  edgePan() {
+    if (this.view.zoom <= this.fitZoom() * 1.001 || this.edgeFrame) return;
+    const step = () => {
+      this.edgeFrame = null;
+      const { drag } = this;
+      if (!drag) return;
+      const rect = this.table.getBoundingClientRect();
+      const push = (pos, low, high) => (pos < low + EDGE_PAN ? (low + EDGE_PAN - pos) / EDGE_PAN
+        : pos > high - EDGE_PAN ? -(pos - high + EDGE_PAN) / EDGE_PAN : 0);
+      const dx = push(drag.clientX, rect.left, rect.right) * 14;
+      const dy = push(drag.clientY, rect.top, rect.bottom) * 14;
+      if (!dx && !dy) return;
+      const before = { ...this.view };
+      this.setView(before.x + dx, before.y + dy, before.zoom);
+      if (this.view.x === before.x && this.view.y === before.y) return; // reached the table's edge
+      this.moveDragged();
+      this.edgeFrame = requestAnimationFrame(step);
+    };
+    this.edgeFrame = requestAnimationFrame(step);
   }
 
   // Springs the group's size (and lean, while dragging) towards `targetScale`, frame by frame.
@@ -364,8 +654,8 @@ export class PuzzleGame {
   // Moves a group, keeping all of it on the table.
   placeGroup(group, x, y) {
     const { left, top, right, bottom } = group.bounds;
-    group.x = clamp(x, -left, this.table.clientWidth - right);
-    group.y = clamp(y, -top, this.table.clientHeight - bottom);
+    group.x = clamp(x, -left, this.worldWidth - right);
+    group.y = clamp(y, -top, this.worldHeight - bottom);
     this.applyPosition(group);
   }
 
@@ -395,7 +685,7 @@ export class PuzzleGame {
       for (const piece of group.pieces) {
         for (const neighbor of this.neighbors(piece)) {
           const other = neighbor.group;
-          if (other === group) continue;
+          if (other === group || this.isRemoteHeld(other)) continue;
           if (Math.abs(other.x - group.x) < this.snapDistance && Math.abs(other.y - group.y) < this.snapDistance) {
             group = this.merge(group, other);
             snapped = true;
@@ -435,7 +725,7 @@ export class PuzzleGame {
     burst.className = 'snap-sparks';
     burst.style.left = `${cx}px`;
     burst.style.top = `${cy}px`;
-    this.table.append(burst);
+    this.world.append(burst);
     const flights = [];
     for (let i = 0; i < 10; i++) {
       const dot = document.createElement('span');
@@ -470,6 +760,77 @@ export class PuzzleGame {
     // Undo can't pull joined pieces apart, so forget earlier positions of either group.
     this.history = this.history.filter((h) => h.group !== keep && h.group !== drop);
     return keep;
+  }
+
+  /* ---------- A friend's hands on the shared table ---------- */
+
+  isRemoteHeld(group) {
+    return group.pieces.some((p) => this.remoteHeld.has(p.index));
+  }
+
+  // If the friend takes or moves the group in this player's hand, this player lets go.
+  yieldTo(pieces) {
+    if (this.drag && this.drag.group.pieces.some((p) => pieces.includes(p.index))) this.cancelDrag();
+  }
+
+  remoteGrab(pieces) {
+    this.remoteRelease();
+    this.yieldTo(pieces);
+    const group = this.puzzle.pieces[pieces[0]]?.group;
+    if (!group) return;
+    for (const p of group.pieces) this.remoteHeld.add(p.index);
+    group.el.classList.add('remote-held');
+    group.el.style.zIndex = ++this.topZ;
+    if (this.hintShown?.pieces.some((p) => p.group === group)) this.clearHint();
+  }
+
+  remoteMove(piece, nx, ny) {
+    const group = this.puzzle.pieces[piece]?.group;
+    if (!group || !this.isRemoteHeld(group)) return;
+    const { x, y } = this.fromNormalized(nx, ny);
+    group.el.classList.add('remote-moving'); // glides between the friend's updates
+    this.placeGroup(group, x, y);
+  }
+
+  remoteRelease() {
+    for (const group of this.groups) group.el.classList.remove('remote-held', 'remote-moving');
+    this.remoteHeld.clear();
+  }
+
+  // The friend put a group down at (nx, ny); `pieces` includes every group it joined.
+  remoteDrop(pieces, nx, ny) {
+    this.remoteRelease();
+    this.yieldTo(pieces);
+    const groups = [...new Set(pieces.map((i) => this.puzzle.pieces[i]?.group).filter(Boolean))];
+    if (!groups.length) return;
+    const dropped = [...groups[0].pieces];
+    let group = groups[0];
+    for (const other of groups.slice(1)) group = this.merge(group, other);
+    const { x, y } = this.fromNormalized(nx, ny);
+    group.el.style.zIndex = ++this.topZ;
+    group.el.classList.add('remote-moving');
+    this.placeGroup(group, x, y);
+    setTimeout(() => group.el.classList.remove('remote-moving'), 200);
+    if (groups.length > 1) {
+      playSnap();
+      this.snapEffect(group, dropped);
+      this.onProgress?.(this.progress(), this.connectedPieces(), this.puzzle.pieces.length);
+      if (this.groups.size === 1) this.complete();
+    }
+  }
+
+  // Replaces the whole table with the shared one (after this screen fell out of step).
+  applyLayout(layout, held = []) {
+    this.cancelDrag();
+    this.clearHint();
+    this.pouch?.remove(); // joining a game that's already under way: the pieces are out
+    this.table.classList.remove('in-pouch');
+    for (const group of this.groups) group.el.remove();
+    this.groups.clear();
+    this.remoteHeld.clear();
+    this.restoreLayout(layout.map((entry, i) => ({ ...entry, z: i + 1 })));
+    if (held.length) this.remoteGrab(held);
+    this.onProgress?.(this.progress(), this.connectedPieces(), this.puzzle.pieces.length);
   }
 
   /* ---------- Undo and edge filter ---------- */
@@ -529,6 +890,7 @@ export class PuzzleGame {
 
   showHint(a, b) {
     this.clearHint();
+    if (this.view.zoom > this.fitZoom() * 1.001) this.resetView(); // both pieces in sight
     // Bring both into view: the bigger group first, then the piece to move on top of it.
     a.group.el.style.zIndex = ++this.topZ;
     b.group.el.style.zIndex = ++this.topZ;
@@ -544,7 +906,7 @@ export class PuzzleGame {
     svg.setAttribute('class', 'hint-line');
     svg.innerHTML = `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>` +
       `<circle cx="${from.x}" cy="${from.y}" r="5"/><circle cx="${to.x}" cy="${to.y}" r="5"/>`;
-    this.table.append(svg);
+    this.world.append(svg);
 
     this.hintShown = { pieces: [a, b], svg };
     this.hintTimer = setTimeout(() => this.clearHint(), 3200);
@@ -575,6 +937,7 @@ export class PuzzleGame {
 
   complete() {
     this.ready = false;
+    this.resetView(); // step back to see the whole picture
     const [group] = this.groups;
     this.settleNow(group);
     group.el.style.transformOrigin = '';
@@ -640,9 +1003,12 @@ export class PuzzleGame {
     const cardTop = parent.top + card.offsetTop - view.top;
     const beside = cardLeft > view.width / 2;
     const margin = 24;
-    const area = beside
+    const screen = beside
       ? { x: margin, y: margin, w: cardLeft - margin * 2, h: view.height - margin * 2 }
       : { x: margin, y: margin, w: view.width - margin * 2, h: cardTop - margin * 2 };
+    // From the screen to the table's own units (they differ on a scaled table).
+    const { x: vx, y: vy, zoom } = this.view;
+    const area = { x: (screen.x - vx) / zoom, y: (screen.y - vy) / zoom, w: screen.w / zoom, h: screen.h / zoom };
 
     const frameBorder = 16;
     const { width, height } = this.puzzle;
@@ -668,16 +1034,21 @@ export class PuzzleGame {
     this.table.style.backgroundColor = getTable(id).color;
     const url = await tableTextureUrl(id);
     if (this.tableId !== id) return;
-    this.table.style.backgroundImage = `url(${url})`;
-    this.table.style.backgroundSize = `${getTable(id).tile}px auto`; // repeat at life-size
+    // On the world, so the table's grain moves and grows with the pieces when zooming.
+    this.world.style.backgroundImage = `url(${url})`;
+    this.world.style.backgroundSize = `${getTable(id).tile}px auto`; // repeat at life-size
   }
 
   destroy() {
+    this.destroyed = true;
+    clearTimeout(this.sharpenTimer);
     this.clearHint();
     if (this.motion) cancelAnimationFrame(this.motion.frame);
+    cancelAnimationFrame(this.edgeFrame);
     for (const [type, fn] of Object.entries(this.handlers)) this.table.removeEventListener(type, fn);
     window.removeEventListener('resize', this.onResize);
-    this.table.classList.remove('in-pouch');
+    this.table.classList.remove('in-pouch', 'zoomed', 'panning');
+    this.table.style.backgroundImage = '';
     this.table.replaceChildren();
   }
 }
@@ -701,4 +1072,8 @@ function groupBounds(pieces, { pieceW, pieceH }) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function viewTransform(x, y, zoom) {
+  return `translate(${x}px, ${y}px) scale(${zoom})`;
 }

@@ -290,7 +290,7 @@ export async function initHero(container, ghostLayer, { delay = 0 } = {}) {
   const calm = !gsap || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const stage = container.parentElement;
   if (ghostLayer) initGhosts(ghostLayer, gsap, calm, delay);
-  const loaded = await Promise.all(SAMPLES.map((s) => loadImage(`assets/photos/${s.id}-card.jpg`).catch(() => null)));
+  const loaded = await Promise.all(SAMPLES.map((s) => loadImage(`assets/photos/${s.id}-card.webp`).catch(() => null)));
   const images = new Map(SAMPLES.map((s, i) => [s.id, loaded[i]]));
   let frames = [];
 

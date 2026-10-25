@@ -1,0 +1,15 @@
+{
+  "name": "Puzzle Table",
+  "short_name": "Puzzle Table",
+  "description": "Turn your photos into jigsaw puzzles. Piece by Piece, Find Your Peace.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#1c1815",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

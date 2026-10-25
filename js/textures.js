@@ -23,7 +23,7 @@ const imageCache = new Map();
 
 // Full-size texture URL, resolved once the image has loaded (so it never appears half-drawn).
 export function tableTextureUrl(id) {
-  const url = `assets/tables/${getTable(id).id}.jpg`;
+  const url = `assets/tables/${getTable(id).id}.webp`;
   if (!imageCache.has(url)) {
     imageCache.set(url, new Promise((resolve) => {
       const img = new Image();
@@ -51,7 +51,7 @@ export function createTablePicker(selectedId, onPick) {
     button.dataset.id = table.id;
 
     const thumb = document.createElement('img');
-    thumb.src = `assets/tables/${table.id}-swatch.jpg`;
+    thumb.src = `assets/tables/${table.id}-swatch.webp`;
     thumb.alt = '';
     thumb.style.backgroundColor = table.color;
     const name = document.createElement('span');

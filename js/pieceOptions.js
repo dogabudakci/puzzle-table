@@ -4,8 +4,9 @@ const PIECE_COUNTS = [12, 24, 48, 100, 144, 200, 300, 500];
 
 // A piece must cover at least this many pixels of the original photo, or it looks blurry.
 const MIN_SOURCE_PIECE = 40;
-// A piece must be at least this big (CSS px) on the table, or it's too fiddly to grab.
-const MIN_SCREEN_PIECE = 28;
+// A piece must be at least this big (CSS px) on the whole-table view; zooming in (up to 4x)
+// makes small ones big enough to grab.
+const MIN_SCREEN_PIECE = 16;
 
 // Picks columns × rows close to the target count, keeping pieces roughly square.
 export function gridFor(count, aspect) {

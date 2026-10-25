@@ -8,7 +8,7 @@ import { gridFor } from './pieceOptions.js';
 
 // Everything worth tweaking lives here.
 const INTRO = {
-  photo: 'assets/intro.jpg',
+  photo: 'assets/intro.webp',
   pieces: 160,         // aimed for; the grid that fits the photo's shape is used
   maxWidth: 940,       // puzzle size on screen, px
   screenShare: 0.72,   // …but at most this share of the window's width and height
@@ -143,21 +143,4 @@ export async function playIntro({ onReveal } = {}) {
   // A click skips straight to the end.
   overlay.addEventListener('pointerdown', () => tl.progress(1), { once: true });
   await new Promise((resolve) => tl.eventCallback('onComplete', () => { overlay.remove(); resolve(); }));
-}
-
-// A small floating button that replays the intro, for trying out changes.
-export function addReplayButton() {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'intro-replay';
-  button.textContent = 'Replay intro';
-  let playing = false;
-  button.addEventListener('click', async () => {
-    if (playing) return;
-    playing = true;
-    await playIntro();
-    playing = false;
-  });
-  document.body.append(button);
-  return button;
 }

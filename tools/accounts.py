@@ -1,9 +1,11 @@
-"""Player accounts: sign up, sign in and sessions, stored in a SQLite database.
+"""Player accounts: sign up, sign in and sessions, stored in the database (see tools/db.py).
 
 Security choices:
-- Passwords are never stored. Only an scrypt hash is kept (N=2^17, r=8, p=1, the OWASP
-  minimum), with a random 16-byte salt per user. The parameters are stored with each hash,
-  so they can be raised later and old hashes upgraded on the next sign-in.
+- Passwords are never stored. Only an scrypt hash is kept (N=2^15, r=8, p=3: one of OWASP's
+  equally strong settings, chosen because it needs 32 MB of memory instead of 128 MB on a small
+  server), with a random 16-byte salt per user. The parameters are stored with each hash, so
+  they can be changed later and old hashes upgraded on the next sign-in. Only two hashes are
+  worked out at a time, so a flood of sign-in attempts can't use up the server's memory.
 - A session is a random 256-bit token, given to the browser in an HttpOnly cookie. The
   database only keeps its SHA-256, so a leaked database can't be used to sign in.
 - Sign-in answers the same way, and takes about as long, whether or not the account exists,
@@ -17,17 +19,19 @@ import hashlib
 import hmac
 import re
 import secrets
-import sqlite3
 import threading
 import time
 from pathlib import Path
+
+from db import Database
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "puzzle.db"
 
 SESSION_DAYS = 30
-SCRYPT = {"n": 2 ** 17, "r": 8, "p": 1}
-SCRYPT_MAXMEM = 2 ** 28
+SCRYPT = {"n": 2 ** 15, "r": 8, "p": 3}
+SCRYPT_MAXMEM = 2 ** 28  # also allows checking older N=2^17 hashes
+HASHING = threading.BoundedSemaphore(2)
 
 USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,24}$")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
@@ -63,7 +67,8 @@ def unb64(text):
 
 def hash_password(password, salt=None, n=SCRYPT["n"], r=SCRYPT["r"], p=SCRYPT["p"]):
     salt = salt or secrets.token_bytes(16)
-    digest = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=32)
+    with HASHING:
+        digest = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=32)
     return f"scrypt${n}${r}${p}${b64(salt)}${b64(digest)}"
 
 
@@ -114,12 +119,9 @@ class RateLimiter:
 
 class Accounts:
     def __init__(self, db_path=DB_PATH):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.database = Database(db_path)
         self.limits = RateLimiter()
-        with self.connect() as db:
-            db.executescript("""
-                PRAGMA journal_mode = WAL;
+        self.database.script("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE,
@@ -136,18 +138,10 @@ class Accounts:
                 );
                 CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
             """)
-        try:
-            # Only this user can open the folder, so the database and SQLite's -wal/-shm files stay private.
-            self.db_path.parent.chmod(0o700)
-            self.db_path.chmod(0o600)
-        except OSError:
-            pass
+        self.database.add_column("users", "suspended", "INTEGER NOT NULL DEFAULT 0")  # set from the admin page
 
     def connect(self):
-        db = sqlite3.connect(self.db_path, timeout=10)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys = ON")
-        return db
+        return self.database.connect()
 
     # ---------- Checks ----------
 
@@ -186,12 +180,11 @@ class Accounts:
         stored = hash_password(password)
         try:
             with self.connect() as db:
-                cursor = db.execute(
-                    f"INSERT INTO users ({kind}, password_hash, created_at) VALUES (?, ?, ?)",
+                user_id = db.execute(
+                    f"INSERT INTO users ({kind}, password_hash, created_at) VALUES (?, ?, ?) RETURNING id",
                     (value, stored, int(time.time())),
-                )
-                user_id = cursor.lastrowid
-        except sqlite3.IntegrityError:
+                ).fetchone()["id"]
+        except self.database.IntegrityError:
             raise AccountError("That name is already taken. Try signing in instead.", 409)
         return self.new_session(user_id), self.user(user_id)
 
@@ -205,8 +198,10 @@ class Accounts:
             raise AccountError("Too many attempts. Please wait 15 minutes and try again.", 429)
 
         with self.connect() as db:
-            row = db.execute(f"SELECT id, password_hash FROM users WHERE {kind} = ?", (value,)).fetchone() if value else None
+            row = db.execute(f"SELECT id, password_hash, suspended FROM users WHERE {kind} = ?", (value,)).fetchone() if value else None
         ok = check_password(password or "", row["password_hash"] if row else DUMMY_HASH) and row is not None
+        if ok and row["suspended"]:  # only said to someone who knows the password
+            raise AccountError("This account has been suspended. If you think that's a mistake, please contact us.", 403)
         if not ok:
             self.limits.add(f"fail:{value}")
             self.limits.add(f"fail-ip:{address}")
@@ -234,7 +229,8 @@ class Accounts:
             return None
         with self.connect() as db:
             row = db.execute(
-                "SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?",
+                "SELECT s.user_id FROM sessions s JOIN users u ON u.id = s.user_id"
+                " WHERE s.token_hash = ? AND s.expires_at > ? AND u.suspended = 0",
                 (token_hash(token), int(time.time())),
             ).fetchone()
         return self.user(row["user_id"]) if row else None
@@ -270,4 +266,5 @@ class Accounts:
         user = dict(row)
         user.pop("password_hash", None)  # never sent anywhere
         user["email_verified"] = bool(user.get("email_verified"))
+        user.pop("suspended", None)
         return user

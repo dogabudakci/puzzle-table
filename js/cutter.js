@@ -145,12 +145,7 @@ export function cutPuzzle(source, cols, rows, width, height, rng = Math.random) 
   const edges = buildEdges(cols, rows, pieceW, pieceH, rng);
 
   // The photo scaled once to puzzle size, so each piece copies just its own patch.
-  const scaled = document.createElement('canvas');
-  scaled.width = Math.round(width * dpr);
-  scaled.height = Math.round(height * dpr);
-  const sctx = scaled.getContext('2d');
-  sctx.imageSmoothingQuality = 'high';
-  sctx.drawImage(source, 0, 0, scaled.width, scaled.height);
+  const scaled = scalePhoto(source, width, height, dpr);
 
   const pieces = [];
   for (let r = 0; r < rows; r++) {
@@ -178,7 +173,50 @@ export function cutPuzzle(source, cols, rows, width, height, rng = Math.random) 
     }
   }
 
-  return { cols, rows, width, height, pieceW, pieceH, pad, dpr, scaled, pieces };
+  return { cols, rows, width, height, pieceW, pieceH, pad, dpr, scaled, pieces, source };
+}
+
+function scalePhoto(source, width, height, resolution) {
+  const scaled = document.createElement('canvas');
+  scaled.width = Math.round(width * resolution);
+  scaled.height = Math.round(height * resolution);
+  const ctx = scaled.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, 0, 0, scaled.width, scaled.height);
+  return scaled;
+}
+
+// The most canvas pixels per CSS pixel worth drawing: more than the photo has adds nothing,
+// and the total is capped so a big puzzle can't use up a phone's memory.
+export function maxResolution(puzzle) {
+  const { source, width, height, pad, pieceW, pieceH, pieces } = puzzle;
+  const fromPhoto = Math.min(source.width / width, source.height / height);
+  const area = pieces.length * (pieceW + pad * 2) * (pieceH + pad * 2);
+  const fromMemory = Math.sqrt(40e6 / area); // about 160 MB of piece pixels at most
+  return Math.max(1, Math.min(fromPhoto, fromMemory));
+}
+
+// Draws the pieces again at `resolution` canvas pixels per CSS pixel, a batch at a time
+// (sharper when the table is zoomed in). Resolves once all are done, or false if cancelled.
+export async function redrawPieces(puzzle, resolution, isCancelled = () => false) {
+  const { width, height, pad, pieceW, pieceH, pieces } = puzzle;
+  const scaled = scalePhoto(puzzle.source, width, height, resolution);
+  const canvasW = pieceW + pad * 2;
+  const canvasH = pieceH + pad * 2;
+  for (let i = 0; i < pieces.length; i++) {
+    if (i % 24 === 0) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      if (isCancelled()) return false;
+    }
+    const { canvas, ctx, path, ox, oy } = pieces[i];
+    canvas.width = Math.ceil(canvasW * resolution); // also clears it and resets the context
+    canvas.height = Math.ceil(canvasH * resolution);
+    ctx.scale(resolution, resolution);
+    drawPiece(ctx, path, scaled, ox, oy, canvasW, canvasH, width, height, resolution);
+  }
+  puzzle.scaled = scaled;
+  puzzle.dpr = resolution;
+  return true;
 }
 
 function drawPiece(ctx, path, scaled, ox, oy, canvasW, canvasH, width, height, dpr) {

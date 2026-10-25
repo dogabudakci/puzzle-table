@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Admin · Puzzle Table</title>
+  <meta name="theme-color" content="#1c1815">
+  <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="legal-page">
+  <header class="legal-header">
+    <div class="site-header-inner">
+      <a class="logo" href="./"><svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></svg>Puzzle Table</a>
+      <span class="admin-tag">Admin</span>
+    </div>
+  </header>
+
+  <main class="legal admin">
+    <p class="account-error" id="admin-error" hidden></p>
+    <section id="admin-body" hidden>
+      <h1>Overview</h1>
+      <div class="admin-stats" id="admin-stats"></div>
+      <h2>Reports</h2>
+      <p class="updated">Suspending signs the player out everywhere and stops them signing in; they disappear from friends lists.
+        Deleting removes their account and everything in it for good.</p>
+      <div class="admin-reports" id="admin-reports"></div>
+      <p class="empty-note" id="admin-empty" hidden>No reports. All quiet.</p>
+    </section>
+  </main>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

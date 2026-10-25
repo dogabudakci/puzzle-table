@@ -190,3 +190,14 @@ export async function listAccountDays() {
 export async function addAccountDays(days) {
   return api('daily', { days });
 }
+
+// The time for today's puzzle, for the friends' ranking (signed in only).
+export async function saveDailyResult(day, timeMs, moves) {
+  if (user) await api('daily/result', { day, timeMs, moves });
+}
+
+// Today's times of the player and their friends, fastest first ([] when signed out).
+export async function dailyBoard(day) {
+  if (!user) return [];
+  return (await api(`daily/friends/${day}`)).board;
+}

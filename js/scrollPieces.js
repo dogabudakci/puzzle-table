@@ -6,7 +6,8 @@ import { cutPuzzle, seededRandom } from './cutter.js';
 
 // Everything worth tweaking lives here.
 const SCROLL_PIECES = {
-  photos: ['assets/library/oia.jpg', 'assets/library/orchids.jpg', 'assets/library/cinque-terre.jpg', 'assets/library/lake-pier.jpg'],
+  // Small pictures are plenty for small pieces (the full photos would be about 2 MB).
+  photos: ['assets/library/oia-thumb.jpg', 'assets/library/orchids-thumb.jpg', 'assets/library/cinque-terre-thumb.jpg', 'assets/library/lake-pier-thumb.jpg'],
   size: [22, 38],      // px: piece size
   every: 70,           // px scrolled per new piece (on each side, alternating)
   maxOnScreen: 26,

@@ -1,0 +1,3 @@
+# Only needed online, to talk to the PostgreSQL database (Neon). Running on your own computer needs nothing extra.
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3

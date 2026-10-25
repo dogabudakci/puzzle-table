@@ -3,7 +3,42 @@
 import { resumeAudio } from './audio.js';
 
 const SOUND_KEY = 'puzzle-sound';
+const VOLUME_KEY = 'puzzle-sound-volume';
 let soundOn = readSoundSetting();
+let volume = readVolume();
+let output = null; // every effect plays through this, so one setting sets their loudness
+
+function readVolume() {
+  try {
+    const saved = localStorage.getItem(VOLUME_KEY);
+    return saved !== null && Number(saved) >= 0 && Number(saved) <= 1 ? Number(saved) : 0.8;
+  } catch {
+    return 0.8;
+  }
+}
+
+export function soundVolume() {
+  return volume;
+}
+
+export function setSoundVolume(next) {
+  volume = Math.max(0, Math.min(1, next));
+  if (output) output.gain.setTargetAtTime(volume, output.context.currentTime, 0.03);
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  } catch {
+    // Storage unavailable: the setting just won't be remembered.
+  }
+}
+
+function effectsOut(ctx) {
+  if (!output || output.context !== ctx) {
+    output = ctx.createGain();
+    output.gain.value = volume;
+    output.connect(ctx.destination);
+  }
+  return output;
+}
 
 function readSoundSetting() {
   try {
@@ -54,7 +89,7 @@ export async function playSnap() {
   filter.Q.value = 1.4;
   const gain = ctx.createGain();
   gain.gain.value = 0.8;
-  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.connect(filter).connect(gain).connect(effectsOut(ctx));
   source.start();
 }
 
@@ -69,7 +104,7 @@ export async function playDrop() {
   filter.frequency.value = 900 + Math.random() * 300;
   const gain = ctx.createGain();
   gain.gain.value = 0.35;
-  tap.connect(filter).connect(gain).connect(ctx.destination);
+  tap.connect(filter).connect(gain).connect(effectsOut(ctx));
   tap.start();
 }
 
@@ -93,7 +128,7 @@ export async function playPouchOpen(pieceCount, spillSeconds = 1.4) {
   const now = ctx.currentTime;
   const out = ctx.createGain();
   out.gain.value = 0.7; // overall level: one place to make the whole sound louder or softer
-  out.connect(ctx.destination);
+  out.connect(effectsOut(ctx));
 
   // Paper sliding open: airy noise, band-limited so it sounds papery rather than hissy.
   const slide = noise(ctx, 0.55, (t) => Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.3)), 2));
@@ -152,7 +187,7 @@ export async function playComplete() {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + (i === notes.length - 1 ? 1.2 : 0.4));
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(effectsOut(ctx));
     osc.start(t);
     osc.stop(t + 1.3);
   });

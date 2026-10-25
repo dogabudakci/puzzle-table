@@ -15,7 +15,6 @@ Security choices:
 
 import os
 import secrets
-import sqlite3
 import time
 
 import mailer
@@ -42,13 +41,9 @@ class Recovery:
     def __init__(self, accounts, public_url):
         self.accounts = accounts
         self.public_url = public_url.rstrip("/")
-        with accounts.connect() as db:
-            db.executescript(SCHEMA)
-            columns = {r["name"] for r in db.execute("PRAGMA table_info(users)")}
-            if "email_verified" not in columns:
-                db.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
-            if "pending_email" not in columns:
-                db.execute("ALTER TABLE users ADD COLUMN pending_email TEXT")
+        accounts.database.script(SCHEMA)
+        accounts.database.add_column("users", "email_verified", "INTEGER NOT NULL DEFAULT 0")
+        accounts.database.add_column("users", "pending_email", "TEXT")
 
     def connect(self):
         return self.accounts.connect()
@@ -90,11 +85,15 @@ class Recovery:
             raise AccountError("We've sent a few emails already. Please check your inbox, or try again later.", 429)
         with self.connect() as db:
             token = self._new_token(db, user_id, "verify", email, VERIFY_HOURS * 3600)
+        link = f"{self.public_url}/#verify={token}"
         mailer.send(email, "Confirm your email for Puzzle Table", (
             "Hello,\n\nPlease confirm this email address for your Puzzle Table account by opening this link:\n\n"
-            f"{self.public_url}/#verify={token}\n\n"
+            f"{link}\n\n"
             f"The link works for {VERIFY_HOURS} hours. If you didn't ask for this, you can ignore this email.\n"
-        ))
+        ), mailer.design(self.public_url, "Confirm your email", [
+            "Please confirm this email address for your Puzzle Table account. "
+            "Then you can reset your password if you ever forget it.",
+        ], ("Confirm email", link), f"The link works for {VERIFY_HOURS} hours. If you didn't ask for this, you can ignore this email."))
 
     def confirm_email(self, token):
         with self.connect() as db:
@@ -108,7 +107,7 @@ class Recovery:
                     " pending_email = CASE WHEN pending_email = ? THEN NULL ELSE pending_email END WHERE id = ?",
                     (row["email"], row["email"], row["user_id"]),
                 )
-            except sqlite3.IntegrityError:
+            except self.accounts.database.IntegrityError:
                 raise AccountError("That email now belongs to another account.", 409)
         # Tell the old confirmed address, so a change nobody asked for doesn't go unnoticed.
         if before and before["email"] and before["email_verified"] and before["email"] != row["email"]:
@@ -116,7 +115,11 @@ class Recovery:
                 "Hello,\n\nThe email address of your Puzzle Table account was just changed to a different one.\n"
                 "If that was you, there's nothing to do. If not, someone may have your password: please reset it\n"
                 f"from {self.public_url} and contact us.\n"
-            ))
+            ), mailer.design(self.public_url, "Your email was changed", [
+                "The email address of your Puzzle Table account was just changed to a different one.",
+                "If that was you, there's nothing to do. If not, someone may have your password: "
+                "please reset it and contact us.",
+            ], ("Open Puzzle Table", self.public_url)))
         return row["user_id"]
 
     def set_email(self, user_id, email, password, address):
@@ -156,13 +159,18 @@ class Recovery:
             if not row:
                 return
             token = self._new_token(db, row["id"], "reset", email, RESET_MINUTES * 60)
+        link = f"{self.public_url}/#reset={token}"
         mailer.send(email, "Reset your Puzzle Table password", (
             "Hello,\n\nSomeone (hopefully you) asked to reset the password for your Puzzle Table account.\n"
             "Choose a new password here:\n\n"
-            f"{self.public_url}/#reset={token}\n\n"
+            f"{link}\n\n"
             f"The link works once, for {RESET_MINUTES} minutes. If you didn't ask for this, ignore this email:\n"
             "your password stays the same.\n"
-        ))
+        ), mailer.design(self.public_url, "Reset your password", [
+            "Someone (hopefully you) asked to reset the password for your Puzzle Table account.",
+        ], ("Choose a new password", link),
+            f"The link works once, for {RESET_MINUTES} minutes. If you didn't ask for this, ignore this email: "
+            "your password stays the same."))
 
     def reset_password(self, token, password):
         # Check the new password before using up the link, so a too-weak one can simply be retried.

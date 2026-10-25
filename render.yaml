@@ -1,0 +1,40 @@
+# Render's settings for Puzzle Table (render.com, free plan). Render reads this file when the
+# site is set up as a "Blueprint". Secrets are never written here: the entries marked
+# `sync: false` are asked for once in Render's dashboard and stored there.
+services:
+  - type: web
+    name: puzzle-table
+    runtime: python
+    plan: free
+    region: frankfurt            # keep the Neon database in the same region (AWS Frankfurt, eu-central-1)
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 -u tools/serve.py
+    healthCheckPath: /healthz
+    autoDeploy: false            # nothing goes live until you press "Deploy"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.9
+      - key: PUZZLE_HOST
+        value: 0.0.0.0
+      - key: PUZZLE_SECURE_COOKIES
+        value: "1"
+      - key: PUZZLE_TRUST_PROXY
+        value: "1"
+      - key: PUZZLE_PUBLIC_URL     # e.g. https://puzzle-table.onrender.com
+        sync: false
+      - key: DATABASE_URL          # Neon's connection string
+        sync: false
+      - key: PUZZLE_BREVO_API_KEY
+        sync: false
+      - key: PUZZLE_MAIL_FROM      # e.g. Puzzle Table <you@gmail.com>, verified as a sender in Brevo
+        sync: false
+      - key: PUZZLE_OPERATOR       # your name, as shown in the footer, privacy policy and terms
+        sync: false
+      - key: PUZZLE_CONTACT_EMAIL  # where people can reach you about the site and their data
+        sync: false
+      - key: PUZZLE_COUNTRY        # the country you run the site from (its law applies to the terms)
+        sync: false
+      - key: PUZZLE_ADMIN_EMAIL    # where reports about players are sent (can be the same as the contact email)
+        sync: false
+      - key: PUZZLE_ADMIN_USERNAMES  # your username(s), comma-separated: they can open /admin.html
+        sync: false

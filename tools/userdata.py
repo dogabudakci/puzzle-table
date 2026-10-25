@@ -5,21 +5,24 @@ Security choices:
   delete another player's data, even by guessing ids.
 - Incoming data is checked field by field against what the app actually sends; anything else
   is dropped. Images must really be JPEGs (checked by their first bytes) and are size-limited.
-- Each player has a cap on how many puzzles and how much image data they can store.
+- Each player has a cap on how many puzzles and how much image data they can store, and all
+  players together have one too, so the database (0.5 GB on Neon's free plan) never fills up.
 - All rows reference the user with ON DELETE CASCADE, so deleting an account deletes its data.
 """
 
 import base64
 import json
+import os
 import re
 import time
 
 from accounts import AccountError
 
 MAX_GALLERY_ITEMS = 1000
-MAX_IMAGE_BYTES = 4 * 1024 * 1024        # one finished-puzzle picture
-MAX_PROGRESS_PHOTO = 6 * 1024 * 1024     # the photo of the unfinished puzzle
-MAX_STORAGE_BYTES = 300 * 1024 * 1024    # all of one player's pictures together
+MAX_IMAGE_BYTES = 2 * 1024 * 1024        # one finished-puzzle picture (the app sends about 250 KB)
+MAX_PROGRESS_PHOTO = 4 * 1024 * 1024     # the photo of the unfinished puzzle
+MAX_STORAGE_BYTES = 25 * 1024 * 1024     # all of one player's pictures together (about 80 puzzles)
+MAX_TOTAL_STORAGE = int(os.environ.get("PUZZLE_TOTAL_STORAGE_MB") or 400) * 1024 * 1024  # everyone's together
 MAX_PROGRESS_JSON = 512 * 1024
 MAX_DAYS = 5000
 
@@ -110,19 +113,32 @@ def clean_puzzle(record):
 class UserData:
     def __init__(self, accounts):
         self.accounts = accounts
-        with accounts.connect() as db:
-            db.executescript(SCHEMA)
+        accounts.database.script(SCHEMA)
+        accounts.database.add_column("daily", "time_ms", "INTEGER")  # best time, for friends' daily ranking
+        accounts.database.add_column("daily", "moves", "INTEGER")
 
     def connect(self):
         return self.accounts.connect()
 
+    def check_space(self, db, user_id, freed, added):
+        """Refuses an upload that would take the player, or the whole site, over its storage limit."""
+        if self.storage_used(db, user_id) - freed + added > MAX_STORAGE_BYTES:
+            raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409)
+        total = db.execute(
+            "SELECT COALESCE((SELECT SUM(LENGTH(image)) FROM gallery), 0)"
+            " + COALESCE((SELECT SUM(LENGTH(photo) + LENGTH(thumb)) FROM progress), 0)"
+            " + COALESCE((SELECT SUM(LENGTH(image)) FROM match_puzzles), 0) AS used"
+        ).fetchone()["used"]
+        if int(total or 0) - freed + added > MAX_TOTAL_STORAGE:
+            raise AccountError("Puzzle Table's storage is full right now, so this couldn't be saved. Sorry!", 507)
+
     def storage_used(self, db, user_id):
         row = db.execute(
             "SELECT COALESCE((SELECT SUM(LENGTH(image)) FROM gallery WHERE user_id = ?), 0)"
-            " + COALESCE((SELECT LENGTH(photo) + LENGTH(thumb) FROM progress WHERE user_id = ?), 0)",
+            " + COALESCE((SELECT LENGTH(photo) + LENGTH(thumb) FROM progress WHERE user_id = ?), 0) AS used",
             (user_id, user_id),
         ).fetchone()
-        return row[0] or 0
+        return int(row["used"] or 0)
 
     # ---------- Gallery ----------
 
@@ -141,21 +157,19 @@ class UserData:
             existing = db.execute("SELECT id FROM gallery WHERE user_id = ? AND uid = ?", (user_id, uid)).fetchone()
             if existing:  # already uploaded (e.g. a retry): nothing to do
                 return existing["id"]
-            count = db.execute("SELECT COUNT(*) FROM gallery WHERE user_id = ?", (user_id,)).fetchone()[0]
+            count = db.execute("SELECT COUNT(*) AS n FROM gallery WHERE user_id = ?", (user_id,)).fetchone()["n"]
             if count >= MAX_GALLERY_ITEMS:
                 raise AccountError("Your gallery is full. Remove a few puzzles to make room.", 409)
-            if self.storage_used(db, user_id) + len(image) > MAX_STORAGE_BYTES:
-                raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409)
-            cursor = db.execute(
-                "INSERT INTO gallery (user_id, uid, meta, image, created_at) VALUES (?, ?, ?, ?, ?)",
+            self.check_space(db, user_id, 0, len(image))
+            return db.execute(
+                "INSERT INTO gallery (user_id, uid, meta, image, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
                 (user_id, uid, json.dumps(meta), image, int(time.time())),
-            )
-            return cursor.lastrowid
+            ).fetchone()["id"]
 
     def gallery_image(self, user_id, item_id):
         with self.connect() as db:
             row = db.execute("SELECT image FROM gallery WHERE id = ? AND user_id = ?", (item_id, user_id)).fetchone()
-        return row["image"] if row else None
+        return bytes(row["image"]) if row else None
 
     def delete_gallery(self, user_id, item_id):
         if not isinstance(item_id, int):
@@ -178,7 +192,7 @@ class UserData:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not SLUG_RE.match(item["id"]):
                     continue
                 db.execute(
-                    "INSERT OR IGNORE INTO achievements (user_id, id, earned_at) VALUES (?, ?, ?)",
+                    "INSERT INTO achievements (user_id, id, earned_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
                     (user_id, item["id"], number(item.get("earnedAt"), 0, 10 ** 13, int(time.time() * 1000))),
                 )
 
@@ -194,7 +208,28 @@ class UserData:
         with self.connect() as db:
             for day in days:
                 if isinstance(day, str) and DAY_RE.match(day):
-                    db.execute("INSERT OR IGNORE INTO daily (user_id, day) VALUES (?, ?)", (user_id, day))
+                    db.execute("INSERT INTO daily (user_id, day) VALUES (?, ?) ON CONFLICT DO NOTHING", (user_id, day))
+
+    def daily_result(self, user_id, day, time_ms, moves):
+        """Keeps the player's best time for a day's puzzle (it must be "today" somewhere in the world)."""
+        if not isinstance(day, str) or not DAY_RE.match(day):
+            raise AccountError("Invalid day.")
+        nearby = {time.strftime("%Y-%m-%d", time.gmtime(time.time() + shift * 86400)) for shift in (-1, 0, 1)}
+        if day not in nearby:
+            raise AccountError("That's not today's puzzle.")
+        # The time is the player's own clock: anything under 20 seconds isn't a real solve.
+        if isinstance(time_ms, bool) or not isinstance(time_ms, (int, float)) or not 20000 <= time_ms <= 24 * 3600 * 1000:
+            raise AccountError("Invalid time.")
+        time_ms = int(time_ms)
+        moves = number(moves, 0, 10 ** 6, 0)
+        with self.connect() as db:
+            db.execute(
+                "INSERT INTO daily (user_id, day, time_ms, moves) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (user_id, day) DO UPDATE SET"
+                " moves = CASE WHEN daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms THEN excluded.moves ELSE daily.moves END,"
+                " time_ms = CASE WHEN daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms THEN excluded.time_ms ELSE daily.time_ms END",
+                (user_id, day, time_ms, moves),
+            )
 
     # ---------- Unfinished puzzle ----------
 
@@ -224,10 +259,8 @@ class UserData:
         photo = jpeg(body.get("photo"), MAX_PROGRESS_PHOTO, "photo")
         thumb = jpeg(body.get("thumb"), 512 * 1024, "thumbnail")
         with self.connect() as db:
-            used = self.storage_used(db, user_id)
-            old = db.execute("SELECT LENGTH(photo) + LENGTH(thumb) FROM progress WHERE user_id = ?", (user_id,)).fetchone()
-            if used - ((old[0] or 0) if old else 0) + len(photo) + len(thumb) > MAX_STORAGE_BYTES:
-                raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409)
+            old = db.execute("SELECT LENGTH(photo) + LENGTH(thumb) AS size FROM progress WHERE user_id = ?", (user_id,)).fetchone()
+            self.check_space(db, user_id, int((old["size"] or 0) if old else 0), len(photo) + len(thumb))
             # A new photo starts a new save: the old layout belonged to the previous puzzle.
             db.execute(
                 "INSERT INTO progress (user_id, meta, photo, thumb, saved_at) VALUES (?, '{}', ?, ?, ?)"
@@ -240,7 +273,7 @@ class UserData:
         column = {"photo": "photo", "thumb": "thumb"}[which]
         with self.connect() as db:
             row = db.execute(f"SELECT {column} FROM progress WHERE user_id = ?", (user_id,)).fetchone()
-        return row[column] if row else None
+        return bytes(row[column]) if row and row[column] is not None else None
 
     def clear_progress(self, user_id):
         with self.connect() as db:

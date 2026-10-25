@@ -28,7 +28,7 @@ export async function loadImageFile(file) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  return { name: file.name, url, width, height, canvas };
+  return { name: file.name.replace(/\.[^.]+$/, '') || 'Photo', url, width, height, canvas }; // no file ending
 }
 
 // Rates the photo by its shorter side, since that limits how many pieces fit across it.

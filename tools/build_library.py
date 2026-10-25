@@ -9,6 +9,9 @@ Only new or changed photos are processed, duplicates are skipped, and photos rem
 folder are removed from the library too. Uses macOS `sips` for resizing, so it also reads
 HEIC photos from an iPhone.
 
+If Pillow is installed (python3 -m pip install pillow), each picture also gets a WebP copy,
+about a third of the size, which the app then loads instead. Without it, the JPEGs are used.
+
 Run it with:  python3 tools/build_library.py
 (tools/serve.py runs it automatically whenever the app loads the library.)
 """
@@ -20,6 +23,11 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import Path
+
+try:
+    from PIL import Image
+except ImportError:  # optional: only makes the pictures smaller
+    Image = None
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "library"
@@ -72,6 +80,20 @@ def image_size(path):
     return width, height
 
 
+def webp_copy(jpeg):
+    """Makes (or keeps) a WebP copy of a JPEG. False when there's no up-to-date copy."""
+    target = jpeg.with_suffix(".webp")
+    fresh = target.exists() and target.stat().st_mtime >= jpeg.stat().st_mtime
+    if fresh:
+        return True
+    if Image is None:
+        target.unlink(missing_ok=True)  # an old copy of a replaced photo must not be shown
+        return False
+    with Image.open(jpeg) as image:
+        image.save(target, "WEBP", quality=80, method=6)
+    return True
+
+
 def previous_hashes():
     """Which photo each id was made from last time, so replaced photos are noticed."""
     try:
@@ -110,15 +132,19 @@ def build(verbose=True):
                 resize(source, thumb, THUMB_SIDE, 72)
                 log(f"added {source.name}")
             width, height = image_size(full)
-        except (subprocess.CalledProcessError, AttributeError):
+            webp = webp_copy(full) & webp_copy(thumb)  # both, without stopping after the first
+        except (subprocess.CalledProcessError, AttributeError, OSError):
             log(f"skipped {source.name}: could not read this image")
             used_ids.discard(photo_id)
             continue
-        photos.append({"id": photo_id, "name": name, "width": width, "height": height, "hash": digest})
+        photo = {"id": photo_id, "name": name, "width": width, "height": height, "hash": digest}
+        if webp:
+            photo["webp"] = True
+        photos.append(photo)
 
     # Remove pictures of photos that are no longer in the folder.
-    keep = {f"{p['id']}{suffix}.jpg" for p in photos for suffix in ("", "-thumb")}
-    for old in OUTPUT.glob("*.jpg"):
+    keep = {f"{p['id']}{suffix}{ext}" for p in photos for suffix in ("", "-thumb") for ext in (".jpg", ".webp")}
+    for old in [*OUTPUT.glob("*.jpg"), *OUTPUT.glob("*.webp")]:
         if old.name not in keep:
             old.unlink()
             log(f"removed {old.name}")

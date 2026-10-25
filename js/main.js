@@ -1,14 +1,15 @@
 import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { pieceOptions } from './pieceOptions.js';
-import { PuzzleGame } from './game.js';
+import { PuzzleGame, MAX_ZOOM } from './game.js';
 import { cutLines, seededRandom } from './cutter.js';
 import { DEFAULT_TABLE, createTablePicker, getTable, tableTextureUrl } from './textures.js';
-import { isSoundOn, setSoundOn } from './effects.js';
+import { isSoundOn, setSoundOn, soundVolume, setSoundVolume } from './effects.js';
+import { showGuide, guideSeen, resetGuide } from './guide.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
 import {
   savePuzzle, listPuzzles, deletePuzzle, listAchievements, saveAchievements,
   saveProgress, saveProgressPhoto, loadProgress, clearProgress,
-  setUser, moveGuestDataToAccount, puzzleImage, listAccountDays, addAccountDays,
+  setUser, moveGuestDataToAccount, puzzleImage, listAccountDays, addAccountDays, saveDailyResult, dailyBoard,
 } from './library.js';
 import {
   DAILY_PIECES, dayKey, daySeed, dailyPhoto, doneDays, markDone, streak, msUntilTomorrow, renderCalendar,
@@ -18,20 +19,24 @@ import { ACHIEVEMENTS, newlyEarned } from './achievements.js';
 import { renderGallery, renderViewer } from './gallery.js';
 import { icon, setIcon } from './icons.js';
 import { initHero, setHeroRunning } from './hero.js';
-import { playIntro, addReplayButton, introWillPlay, INTRO_REVEAL } from './intro.js';
+import { playIntro, introWillPlay, INTRO_REVEAL } from './intro.js';
 import { initScrollPieces, initHeroDrift } from './scrollPieces.js';
-import { createPhotoLibrary, fetchLibraryPhoto, loadLibrary } from './photoLibrary.js';
+import { createPhotoLibrary, fetchLibraryPhoto, loadLibrary, libraryThumbUrl } from './photoLibrary.js';
 import { initAccount } from './account.js';
+import { initSocial, MODE_NAMES } from './social.js';
+import { MatchSession, resultLine } from './multiplayer.js';
+import { api, apiBlob } from './api.js';
 
 import { MOODS, loadSettings, saveSettings, playMood, stopMusic, playingMood, setVolume } from './music.js';
 
 const DEFAULT_PIECES = 144;
+const SHARED_TABLE = { width: 1600, height: 1000 };
 const PREVIEW_MAX_H = 260;
 
 const state = {
   photo: null,  // { name, url, width, height, canvas, quality }
   pieces: null, // { count, cols, rows, pieceW, pieceH }
-  table: DEFAULT_TABLE,
+  table: savedTable(),
   timer: { mode: 'stopwatch', minutes: 10, minutesChosen: false },
   game: null,
   clock: null,  // GameTimer of the running game
@@ -39,6 +44,7 @@ const state = {
   pendingSeed: null,  // set before startGame() to use a particular cut (the daily puzzle)
   daily: null,        // the day key while playing that day's daily puzzle
   mystery: null,      // { name, allowPeek } while the photo is a secret library pick
+  match: null,        // MatchSession while playing with a friend
 };
 
 const $ = (id) => document.getElementById(id);
@@ -71,7 +77,22 @@ function showScreen(screen) {
 const scrollToSteps = () => $('setup-main').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 
-initAccount({ onChange: accountChanged });
+const account = initAccount({ onChange: accountChanged });
+const social = initSocial({
+  onPlay: startMatch,
+  onGameEvent: (event) => state.match?.handle(event),
+  onUserChange: (user) => account.update(user),
+  onConnection: showConnection,
+});
+
+// While playing with a friend, say so when the connection drops, and catch up once it's back.
+function showConnection(online) {
+  const banner = $('connection-banner');
+  const live = state.match?.live && !gameScreen.hidden;
+  banner.hidden = online || !live;
+  if (online && live) state.match.resync();
+}
+social.setPlaying(() => Boolean(state.match && !gameScreen.hidden));
 
 // Signing in moves this browser's guest progress into the account; signing out shows the
 // browser's own (guest) data again. Everything shown that depends on saved data is refreshed.
@@ -79,6 +100,10 @@ initAccount({ onChange: accountChanged });
 // Continue card and the daily card for the first time.
 async function accountChanged(user) {
   setUser(user);
+  social.setUser(user);
+  $('privacy-note').lastElementChild.textContent = user
+    ? 'Your puzzles are saved privately to your account.'
+    : 'Your photos stay on this device.';
   if (user) {
     try {
       const guestDays = takeGuestDays();
@@ -106,7 +131,6 @@ if (introWillPlay()) {
   });
 }
 playIntro();
-addReplayButton(); // for trying out the intro; remove this line to hide the button
 initScrollPieces(() => !setupScreen.hidden); // small pieces fall down the margins while scrolling
 // The rising pieces start once the frames have dropped in (about 2 s), one by one.
 initHeroDrift($('hero-drift'), () => !setupScreen.hidden, { delay: (introWillPlay() ? INTRO_REVEAL : 0) + 2 });
@@ -176,6 +200,7 @@ async function handleFile(file, { mystery = null } = {}) {
 
   try {
     const photo = await loadImageFile(file);
+    tableTextureUrl(state.table); // a game is coming: get the table's texture ready meanwhile
     if (state.photo) URL.revokeObjectURL(state.photo.url);
     photo.quality = analyzeResolution(photo.width, photo.height);
     state.photo = photo;
@@ -412,15 +437,32 @@ function selectPieces(option) {
 
 /* ---------- Step 3: table ---------- */
 
+function savedTable() {
+  try {
+    const id = localStorage.getItem('puzzle-table');
+    return id && getTable(id).id === id ? id : DEFAULT_TABLE;
+  } catch {
+    return DEFAULT_TABLE;
+  }
+}
+
+// The table is remembered for next time, wherever it was picked.
 function pickTable(id) {
   state.table = id;
+  try {
+    localStorage.setItem('puzzle-table', id);
+  } catch {
+    // Storage unavailable.
+  }
+  for (const picker of document.querySelectorAll('#setup-table-picker, #settings-tables')) {
+    picker.replaceChildren(createTablePicker(id, pickTable));
+  }
   tableTextureUrl(id); // start loading it now so it's ready when the game starts
   state.game?.setTable(id);
   updateSummary();
 }
 
 $('setup-table-picker').append(createTablePicker(state.table, pickTable));
-tableTextureUrl(state.table);
 
 /* ---------- Step 4: timer ---------- */
 
@@ -471,13 +513,16 @@ let completeCardTimer = null;
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
 // restore: a saved game from loadProgress(), to pick up where the player left off.
-async function startGame({ restore = null } = {}) {
+// match: a MatchSession when playing with a friend.
+async function startGame({ restore = null, match = null } = {}) {
   stopGame();
+  state.match = match;
   state.seed = restore?.seed ?? state.pendingSeed ?? Math.floor(Math.random() * 2 ** 31);
   state.pendingSeed = null;
   showScreen(gameScreen);
   showProgress(0);
-  $('game-title').textContent = state.mystery ? `Mystery puzzle · ${state.pieces.count} pieces` : `${state.pieces.count}-piece puzzle`;
+  $('game-title').textContent = match ? `${MODE_NAMES[match.mode]} with ${match.friend} · ${state.pieces.count} pieces`
+    : state.mystery ? `Mystery puzzle · ${state.pieces.count} pieces` : `${state.pieces.count}-piece puzzle`;
   $('reference-img').src = state.photo.url;
   // A mystery puzzle hides the reference picture unless peeking was allowed.
   referenceBtn.hidden = Boolean(state.mystery && !state.mystery.allowPeek);
@@ -503,18 +548,36 @@ async function startGame({ restore = null } = {}) {
   state.game = new PuzzleGame($('table'), state.photo, state.pieces, state.table, {
     seed: state.seed,
     restore: restore?.layout,
-    onChange: scheduleSave,
+    autoPouch: Boolean(match?.live), // live games: the pouch opens for both at "Go!"
+    shared: match?.mode === 'together' ? match.sharedHooks() : null,
+    // Playing together, both screens show the same table: a fixed 16:10 one, scaled to fit.
+    worldSize: match?.mode === 'together' ? SHARED_TABLE : null,
+    onChange: match ? null : scheduleSave, // games with friends aren't saved for later
+    onZoom: showZoom,
     onSpill: () => {
       state.clock.start();
       setPlayControls(true);
+      if (!guideSeen()) closeGuide = showGuide(gameScreen);
+      // A challenge's clock is kept by the server, from the first time the pieces came out.
+      if (match?.mode === 'challenge') {
+        match.beginChallenge().then((spent) => {
+          state.clock?.pause();
+          if (state.clock) state.clock.spent = Math.max(0, spent);
+          state.clock?.start();
+        }, () => {});
+      }
     },
-    onProgress: showProgress,
+    onProgress: (share, connected, total) => {
+      showProgress(share, connected, total);
+      match?.progress(share);
+    },
     onComplete: () => {
+      if (match) return finishMatch(match);
       const { clock } = state;
       clock.pause();
       clearTimeout(saveTimer);
       clearProgress().catch(() => {}).finally(refreshResume);
-      showDailyDone();
+      showDailyDone(clock.elapsed, state.game.moves);
       const mysteryNote = $('mystery-note');
       mysteryNote.hidden = !state.mystery;
       if (state.mystery) {
@@ -556,6 +619,11 @@ async function startGame({ restore = null } = {}) {
   });
   loading.hidden = true;
 
+  if (match) {
+    match.attach(state.game);
+    if (match.live) match.ready().catch((err) => showToast(err.message, 6000));
+    return;
+  }
   if (restore) {
     state.game.moves = restore.moves ?? 0;
     state.game.hintsUsed = restore.hintsUsed ?? 0;
@@ -567,6 +635,154 @@ async function startGame({ restore = null } = {}) {
     saveResumePhoto(state.photo);
   }
 }
+
+/* ---------- Playing with a friend ---------- */
+
+// Opens a game with a friend: loads its puzzle (the same cut on both screens) and its table.
+async function startMatch(matchId) {
+  let match;
+  try {
+    ({ match } = await api(`match/${matchId}`));
+    if (match.status === 'invited') throw new Error(`${match.friend.username} hasn't answered yet.`);
+    if (match.status !== 'accepted' || !match.puzzle) throw new Error('This game is over.');
+    const { puzzle } = match;
+    const listed = puzzle.libraryId && (await loadLibrary()).find((p) => p.id === puzzle.libraryId);
+    const file = puzzle.libraryId
+      ? await fetchLibraryPhoto(listed ?? { id: puzzle.libraryId, name: puzzle.name })
+      : new File([await apiBlob(`match/${matchId}/photo`)], `${puzzle.name}.jpg`, { type: 'image/jpeg' });
+    const photo = await loadImageFile(file);
+    photo.name = puzzle.name;
+    photo.quality = analyzeResolution(photo.width, photo.height);
+    if (state.photo) URL.revokeObjectURL(state.photo.url);
+    state.photo = photo;
+    state.pieces = { count: puzzle.cols * puzzle.rows, cols: puzzle.cols, rows: puzzle.rows, pace: null };
+    state.timer = { ...state.timer, mode: 'stopwatch' };
+    state.daily = null;
+    state.mystery = null;
+    state.pendingSeed = puzzle.seed;
+  } catch (err) {
+    social.notice(err.message);
+    return;
+  }
+  const session = new MatchSession(match, {
+    onStart: (startAt) => {
+      // Both clocks count from the same moment, the server's "Go!".
+      const { clock } = state;
+      if (!clock || state.match !== session) return;
+      clock.pause();
+      clock.spent = Math.max(0, session.serverNow() - startAt);
+      clock.start();
+      setPlayControls(true);
+    },
+    onFriendFinished: (timeMs) => {
+      if (state.match === session && !state.game?.ready) return;
+      showToast(`${session.friend} finished first in ${formatTime(timeMs)}. Finish yours for fun!`, 6000);
+    },
+    onConnection: showConnection,
+    onReaction: (reaction) => showReaction(REACTIONS[reaction], session.friend),
+    onEnded: () => showToast(`This game with ${session.friend} has ended.`, 6000),
+    onFriendLeft: () => {
+      if (state.match !== session) return;
+      const message = session.mode === 'together'
+        ? `${session.friend} left the table. You can finish on your own.`
+        : session.mode === 'race' && session.started ? `${session.friend} gave up. You win the race!` : `${session.friend} left the game.`;
+      showToast(message, 6000);
+    },
+  });
+  showPhoto(state.photo);
+  await startGame({ match: session });
+}
+
+// The puzzle is done: the server measures the time and says who won; then the usual card.
+async function finishMatch(match) {
+  const { clock, game } = state;
+  clock.pause();
+  setPlayControls(false);
+  const stars = starRating(state.pieces.count, game.moves, game.hintsUsed);
+  // After any drop still on its way, so playing together the server has seen the last join.
+  // (The last join finishes the puzzle before its drop is queued, hence the wait for the next tick.)
+  await new Promise((resolve) => setTimeout(resolve));
+  const reply = await match.enqueue(() => match.finish({ stars, moves: game.moves, hints: game.hintsUsed })).catch(() => null);
+  const details = await match.details().catch(() => null);
+  if (state.match !== match) return;
+  const timeMs = reply?.timeMs ?? clock.elapsed;
+  $('stat-time').textContent = formatTime(timeMs);
+  $('stat-pieces').textContent = state.pieces.count;
+  $('stat-extra-label').textContent = 'Game';
+  $('stat-extra').textContent = MODE_NAMES[match.mode];
+  $('stat-extra').classList.add('long'); // "Together" is wider than a number
+  $('stat-hints').textContent = game.hintsUsed === 0 ? 'None' : game.hintsUsed;
+  $('stat-moves').textContent = game.moves;
+  showStars(stars);
+  $('daily-note').hidden = true;
+  $('mystery-note').hidden = true;
+  $('best-badge').hidden = true;
+  $('saved-note').replaceChildren();
+  $('new-medals').replaceChildren();
+  const note = $('match-note');
+  note.textContent = resultLine(match, details, reply);
+  note.classList.toggle('won', /^You won/.test(note.textContent));
+  note.hidden = false;
+  saveToGallery({ timeMs, limitMs: null, beatClock: false, hintsUsed: game.hintsUsed, moves: game.moves, stars });
+  social.refreshMatches();
+  completeCardTimer = setTimeout(() => {
+    completeCard.classList.toggle('beside', $('table').clientWidth >= 1000);
+    completeCard.hidden = false;
+    state.game?.makeRoomForCard(completeCard);
+  }, 3000);
+}
+
+// Quick reactions during a live game with a friend.
+const REACTIONS = ['👍', '👏', '🎉', '😄', '😮', '❤️'];
+const reactMenu = $('react-menu');
+reactMenu.replaceChildren(...REACTIONS.map((emoji, i) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = emoji;
+  b.setAttribute('role', 'menuitem');
+  b.addEventListener('click', () => {
+    state.match?.react(i);
+    showReaction(emoji, null);
+    setReactMenu(false);
+  });
+  return b;
+}));
+function setReactMenu(open) {
+  reactMenu.hidden = !open;
+  $('react-btn').setAttribute('aria-expanded', String(open));
+}
+$('react-btn').addEventListener('click', () => setReactMenu(reactMenu.hidden));
+document.addEventListener('click', (e) => { if (!e.target.closest('#react-wrap')) setReactMenu(false); });
+
+// A reaction floats up from the bottom of the table: big for the friend's, small for one's own.
+function showReaction(emoji, from) {
+  if (!emoji || gameScreen.hidden) return;
+  const bubble = document.createElement('div');
+  bubble.className = `reaction${from ? '' : ' mine'}`;
+  bubble.textContent = emoji;
+  if (from) {
+    const name = document.createElement('span');
+    name.textContent = from;
+    bubble.append(name);
+  }
+  bubble.style.left = `${from ? 38 + Math.random() * 24 : 78 + Math.random() * 8}%`;
+  gameScreen.append(bubble);
+  bubble.addEventListener('animationend', () => bubble.remove());
+  setTimeout(() => bubble.remove(), 4000);
+}
+
+$('rematch-btn').addEventListener('click', () => {
+  const match = state.match;
+  if (!match) return;
+  const { friend, mode, picks, pieces } = match.match;
+  leaveGame();
+  social.rematch(friend, { mode, picks, pieces });
+});
+
+$('match-games-btn').addEventListener('click', () => {
+  leaveGame();
+  social.open('games');
+});
 
 /* ---------- Save and continue ---------- */
 
@@ -585,7 +801,7 @@ async function saveResumePhoto(photo) {
     thumb.width = Math.round(photo.canvas.width * thumbScale);
     thumb.height = Math.round(photo.canvas.height * thumbScale);
     thumb.getContext('2d').drawImage(photo.canvas, 0, 0, thumb.width, thumb.height);
-    const [blob, thumbBlob] = await Promise.all([canvasBlob(photo.canvas, 0.92), canvasBlob(thumb, 0.8)]);
+    const [blob, thumbBlob] = await Promise.all([canvasBlob(photo.canvas, 0.85), canvasBlob(thumb, 0.8)]);
     if (state.photo !== photo) return; // another game started meanwhile
     await saveProgressPhoto({ blob, thumb: thumbBlob });
   } catch {
@@ -601,7 +817,7 @@ function scheduleSave() {
 function saveNow() {
   clearTimeout(saveTimer);
   const { game, clock } = state;
-  if (!game?.ready || game.groups.size < 2 || !clock) return Promise.resolve();
+  if (!game?.ready || game.groups.size < 2 || !clock || state.match) return Promise.resolve();
   return saveProgress({
     name: state.photo.name,
     pieces: state.pieces,
@@ -719,7 +935,8 @@ async function refreshDaily() {
   const run = streak(days, key);
   const doneToday = days.has(key);
 
-  $('daily-img').src = `assets/library/${photo.id}-thumb.jpg`;
+  $('daily-img').src = libraryThumbUrl(photo);
+  showDailyBoard(key);
   $('daily-title').textContent = photo.name;
   $('daily-date').textContent = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const streakEl = $('daily-streak');
@@ -783,16 +1000,47 @@ async function startDaily() {
   }
 }
 
-// On the complete card: mark the day done and celebrate the streak.
-function showDailyDone() {
+// On the complete card: mark the day done and celebrate the streak, and (signed in) where
+// this time ranks among friends today.
+function showDailyDone(timeMs, moves) {
   const note = $('daily-note');
   note.hidden = true;
   if (!state.daily) return;
-  const days = markDone(state.daily);
+  const day = state.daily;
+  const days = markDone(day);
   const run = streak(days);
-  note.replaceChildren(icon('i-flame'), run > 1 ? `Daily puzzle done · ${run}-day streak` : 'Daily puzzle done · streak started');
+  const text = run > 1 ? `Daily puzzle done · ${run}-day streak` : 'Daily puzzle done · streak started';
+  note.replaceChildren(icon('i-flame'), text);
   note.hidden = false;
-  refreshDaily();
+  saveDailyResult(day, timeMs, moves)
+    .then(() => dailyBoard(day))
+    .then((board) => {
+      const place = board.findIndex((row) => row.me) + 1;
+      if (place && board.length > 1 && state.daily === day) {
+        note.replaceChildren(icon('i-flame'), `${text} · #${place} of ${board.length} friends today`);
+      }
+      refreshDaily();
+    })
+    .catch(() => refreshDaily());
+}
+
+// The top times among friends for today's puzzle, under the daily card's button.
+async function showDailyBoard(day) {
+  const list = $('daily-board');
+  const board = await dailyBoard(day).catch(() => []);
+  list.hidden = board.length < 2; // a ranking needs at least two
+  list.replaceChildren(...board.slice(0, 5).map((row, i) => {
+    const item = document.createElement('li');
+    item.classList.toggle('me', row.me);
+    const rank = document.createElement('span');
+    rank.textContent = `${i + 1}`;
+    const name = document.createElement('span');
+    name.textContent = row.me ? 'You' : row.username;
+    const time = document.createElement('strong');
+    time.textContent = formatTime(row.timeMs);
+    item.append(rank, name, time);
+    return item;
+  }));
 }
 
 $('daily-btn').addEventListener('click', startDaily);
@@ -836,6 +1084,13 @@ async function showPersonalBest(pieceCount, timeMs) {
 // Tears down the current game (if any) and hides all of its cards.
 function stopGame() {
   clearTimeout(completeCardTimer);
+  closeGuide?.();
+  closeGuide = null;
+  showZoom(1);
+  state.match?.destroy();
+  state.match = null;
+  $('connection-banner').hidden = true;
+  $('match-note').hidden = true;
   edgesBtn.setAttribute('aria-pressed', 'false');
   state.clock?.pause();
   state.clock = null;
@@ -843,6 +1098,7 @@ function stopGame() {
   state.game = null;
   completeCard.hidden = true;
   completeCard.classList.remove('beside');
+  $('stat-extra').classList.remove('long');
   timeupCard.hidden = true;
   pauseCover.hidden = true;
   showPauseButton(false);
@@ -881,12 +1137,12 @@ function showProgress(share, connected = 0, total = state.pieces?.count ?? 0) {
   }
 }
 
-function showToast(message) {
+function showToast(message, duration = 2800) {
   const toast = $('toast');
   toast.textContent = message;
   toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.hidden = true; }, 2800);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }
 
 function showClock(clock) {
@@ -911,11 +1167,30 @@ function setPaused(paused) {
 }
 
 // Pause and hint only make sense while the pieces are out and the clock is running.
+// The zoom buttons in the corner of the table.
+function showZoom(zoom = 1) {
+  $('zoom-level').textContent = `${Math.round(zoom * 100)}%`;
+  $('zoom-out').disabled = zoom <= 1.001;
+  $('zoom-fit').disabled = zoom <= 1.001;
+  $('zoom-in').disabled = zoom >= MAX_ZOOM - 0.001;
+}
+$('zoom-in').addEventListener('click', () => state.game?.zoomBy(1.5, undefined, undefined, { animate: true }));
+$('zoom-out').addEventListener('click', () => state.game?.zoomBy(1 / 1.5, undefined, undefined, { animate: true }));
+$('zoom-fit').addEventListener('click', () => state.game?.resetView());
+
+// Games with a friend can't be paused (the friend's clock keeps going), and a shared table has no undo.
 function setPlayControls(enabled) {
-  pauseBtn.disabled = !enabled;
+  $('zoom-controls').hidden = !enabled;
+  pauseBtn.disabled = !enabled || Boolean(state.match);
   hintBtn.disabled = !enabled;
-  undoBtn.disabled = !enabled;
+  undoBtn.disabled = !enabled || state.match?.mode === 'together';
   edgesBtn.disabled = !enabled;
+  pauseBtn.hidden = Boolean(state.match);
+  undoBtn.hidden = state.match?.mode === 'together';
+  $('replay-btn').hidden = Boolean(state.match);
+  $('match-games-btn').hidden = !state.match;
+  $('rematch-btn').hidden = !state.match;
+  $('react-wrap').hidden = !state.match?.live;
 }
 
 function setEdgesOnly(on) {
@@ -965,7 +1240,7 @@ $('keep-going-btn').addEventListener('click', () => {
 
 // Stop the clock when the player switches to another tab or app.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && state.clock?.running) setPaused(true);
+  if (document.hidden && state.clock?.running && !state.match) setPaused(true);
 });
 
 /* ---------- Toolbar tools ---------- */
@@ -1039,6 +1314,49 @@ document.addEventListener('keydown', (e) => {
   else if (key === 'r') setReference($('reference').hidden);
   else if (key === 'm') setMusicPanel(musicPanel.hidden);
   else if (key === 'f' && document.fullscreenEnabled) toggleFullscreen();
+  else if ((key === '+' || key === '=') && state.game) state.game.zoomBy(1.5, undefined, undefined, { animate: true });
+  else if ((key === '-' || key === '_') && state.game) state.game.zoomBy(1 / 1.5, undefined, undefined, { animate: true });
+  else if (key === '0' && state.game) state.game.resetView();
+});
+
+/* ---------- Settings and tips ---------- */
+
+let closeGuide = null;
+const settingsDialog = $('settings-dialog');
+
+function openSettings() {
+  $('set-sound').checked = isSoundOn();
+  $('set-sound-volume').value = soundVolume();
+  $('set-music-volume').value = musicSettings.volume;
+  $('settings-tables').replaceChildren(createTablePicker(state.table, pickTable));
+  settingsDialog.showModal();
+}
+$('settings-btn').addEventListener('click', openSettings);
+$('game-settings-btn').addEventListener('click', openSettings);
+$('settings-close').addEventListener('click', () => settingsDialog.close());
+settingsDialog.addEventListener('click', (e) => { if (e.target === settingsDialog) settingsDialog.close(); });
+$('set-sound').addEventListener('change', (e) => {
+  setSoundOn(e.target.checked);
+  showSound();
+});
+$('set-sound-volume').addEventListener('input', (e) => setSoundVolume(Number(e.target.value)));
+$('set-music-volume').addEventListener('input', (e) => {
+  volumeInput.value = e.target.value;
+  volumeInput.dispatchEvent(new Event('input')); // the music panel's slider does the rest
+});
+$('set-guide').addEventListener('click', () => {
+  resetGuide();
+  settingsDialog.close();
+  if (!gameScreen.hidden && state.game) {
+    closeGuide?.();
+    closeGuide = showGuide(gameScreen);
+  } else {
+    social.notice('The tips will show in your next puzzle.');
+  }
+});
+$('help-btn').addEventListener('click', () => {
+  closeGuide?.();
+  closeGuide = showGuide(gameScreen);
 });
 
 /* ---------- Music ---------- */
@@ -1171,7 +1489,8 @@ showMusicState();
 
 /* ---------- Gallery ---------- */
 
-const GALLERY_IMAGE_SIDE = 1600;
+// Big enough to look sharp on screen, small enough (about 250 KB) to keep accounts light.
+const GALLERY_IMAGE_SIDE = 1400;
 
 function photoBlob(source) {
   const scale = Math.min(1, GALLERY_IMAGE_SIDE / Math.max(source.width, source.height));
@@ -1181,7 +1500,7 @@ function photoBlob(source) {
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, canvas }), 'image/jpeg', 0.9));
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, canvas }), 'image/jpeg', 0.82));
 }
 
 // Hangs the finished puzzle in the gallery and reports any new achievements on the complete card.
