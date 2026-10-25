@@ -35,9 +35,10 @@ export class PuzzleGame {
   // shared: { onGrab(group), onMove(group), onDrop(group) } while playing on a friend's table.
   // onZoom(zoom): the view's zoom changed (1 = the whole table).
   // onJoin(pieces): pieces just joined into one group (reported to the server in races and challenges).
+  // announce(text): something happened that a screen reader should say (keyboard play).
   // worldSize: { width, height } for a table of fixed size (a shared one); otherwise it's the screen's.
   constructor(tableEl, photo, { cols, rows }, tableId, {
-    onSpill, onProgress, onComplete, onChange, onZoom, onJoin, seed, restore, autoPouch = false, shared = null, worldSize = null,
+    onSpill, onProgress, onComplete, onChange, onZoom, onJoin, announce, seed, restore, autoPouch = false, shared = null, worldSize = null,
   } = {}) {
     this.table = tableEl;
     this.world = document.createElement('div');
@@ -52,6 +53,12 @@ export class PuzzleGame {
     this.view = { x: 0, y: 0, zoom: 1 };
     this.onZoom = onZoom;
     this.onJoin = onJoin;
+    this.announce = announce;
+    this.selected = null; // the group chosen with the keyboard
+    this.table.tabIndex = 0;
+    this.table.setAttribute('role', 'application');
+    this.table.setAttribute('aria-label',
+      'Puzzle table. Arrow keys choose a piece, Space picks it up, arrow keys move it, Space puts it down. N goes to the next piece.');
     this.pointers = new Map(); // touches/pointers on the table that aren't moving a piece (pan, pinch)
     this.pan = null;
     this.onChange = onChange; // called after anything worth saving changes
@@ -110,6 +117,7 @@ export class PuzzleGame {
       pointerup: (e) => this.pointerUp(e),
       pointercancel: (e) => this.pointerUp(e),
       wheel: (e) => this.wheel(e),
+      keydown: (e) => this.keyDown(e),
       // Safari on a Mac reports trackpad pinches as gestures rather than ctrl + wheel.
       gesturestart: (e) => this.gesture(e),
       gesturechange: (e) => this.gesture(e),
@@ -376,21 +384,8 @@ export class PuzzleGame {
       piece.group.el.animate([{ translate: '0' }, { translate: '-4px' }, { translate: '4px' }, { translate: '0' }], { duration: 220 });
       return;
     }
-    this.clearHint(); // the line would point at the old spot once a piece moves
-
-    const { group } = piece;
-    group.el.style.zIndex = ++this.topZ;
-    group.el.classList.add('lifted');
-    // Lean and grow around the point that was grabbed.
     const at = this.toWorld(e.clientX, e.clientY);
-    group.el.style.transformOrigin = `${at.x - group.x}px ${at.y - group.y}px`;
-    this.drag = {
-      group, pointerId: e.pointerId, dx: at.x - group.x, dy: at.y - group.y,
-      startX: group.x, startY: group.y, lastX: e.clientX, speed: 0, clientX: e.clientX, clientY: e.clientY,
-    };
-    this.animateLift(group, LIFT_SCALE);
-    playDrop(); // Reuse the existing cardboard tap when a piece is picked up.
-    this.shared?.onGrab(group);
+    this.pickUp(piece.group, at, { pointerId: e.pointerId, lastX: e.clientX, clientX: e.clientX, clientY: e.clientY });
     try {
       this.table.setPointerCapture(e.pointerId); // keep receiving moves even off the table
     } catch {
@@ -422,6 +417,27 @@ export class PuzzleGame {
     if (this.drag?.pointerId !== e.pointerId) return;
     cancelAnimationFrame(this.edgeFrame);
     this.edgeFrame = null;
+    this.putDown();
+  }
+
+  // Picks up a group (with the mouse, a finger or the keyboard); `at` is the point held, in table units.
+  pickUp(group, at, extra = {}) {
+    this.clearHint(); // the line would point at the old spot once a piece moves
+    group.el.style.zIndex = ++this.topZ;
+    group.el.classList.add('lifted');
+    // Lean and grow around the point that was grabbed.
+    group.el.style.transformOrigin = `${at.x - group.x}px ${at.y - group.y}px`;
+    this.drag = {
+      group, dx: at.x - group.x, dy: at.y - group.y, startX: group.x, startY: group.y, lastX: 0, speed: 0, ...extra,
+    };
+    this.animateLift(group, LIFT_SCALE);
+    playDrop(); // Reuse the existing cardboard tap when a piece is picked up.
+    this.shared?.onGrab(group);
+  }
+
+  // Puts the group in hand down where it is, joining it to any neighbour close enough.
+  // Returns the group it's now part of, and whether it joined something.
+  putDown() {
     const { group, startX, startY } = this.drag;
     this.drag = null;
     group.el.classList.remove('lifted');
@@ -434,13 +450,15 @@ export class PuzzleGame {
     // Settle back down with a little bounce.
     this.animateLift(group, 1);
     const { pieces } = group;
-    if (!this.trySnap(group) && moved) playDrop();
+    const joined = this.trySnap(group);
+    if (!joined && moved) playDrop();
+    const result = pieces[0].group;
     if (this.shared) {
       // The group in hand, with any it just joined, and where it ended up.
-      const result = pieces[0].group;
       this.shared.onDrop({ pieces: result.pieces.map((p) => p.index), ...this.normalized(result) });
     }
     if (moved && this.groups.size > 1) this.onChange?.();
+    return { group: result, joined };
   }
 
   // Lets go of the piece in hand without moving it (the friend got to it first).
@@ -451,6 +469,118 @@ export class PuzzleGame {
     group.el.classList.remove('lifted');
     this.placeGroup(group, startX, startY);
     this.animateLift(group, 1);
+  }
+
+  /* ---------- Playing with the keyboard ---------- */
+
+  // On the table: arrow keys choose a piece in that direction (or move the one in hand, further
+  // with Shift), Space or Enter picks it up and puts it down, Escape puts it back, N / Shift+N
+  // go to the next or previous piece. What happens is announced for screen readers.
+  keyDown(e) {
+    if (!this.ready || this.paused || e.metaKey || e.ctrlKey || e.altKey) return;
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const holding = this.drag?.pointerId === 'keyboard';
+    if (e.key in arrows) {
+      e.preventDefault();
+      const [dx, dy] = arrows[e.key];
+      if (holding) {
+        const step = (e.shiftKey ? 48 : 10) / this.view.zoom;
+        this.placeGroup(this.drag.group, this.drag.group.x + dx * step, this.drag.group.y + dy * step);
+        this.shared?.onMove(this.drag.group);
+        this.keepInView(this.drag.group);
+      } else {
+        this.selectGroup(this.nearestGroup(dx, dy));
+      }
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (holding) this.keyboardDrop();
+      else if (this.selected && this.groups.has(this.selected)) this.keyboardPickUp();
+      else this.selectGroup(this.nearestGroup(0, 0));
+    } else if (e.key === 'Escape' && holding) {
+      e.preventDefault();
+      this.placeGroup(this.drag.group, this.drag.startX, this.drag.startY);
+      this.putDown(); // (also lets a friend on a shared table take it again)
+      this.announce?.('Put back where it was.');
+    } else if (e.key.toLowerCase() === 'n' && !holding) {
+      e.preventDefault();
+      const order = this.groupsInOrder();
+      const i = order.indexOf(this.selected);
+      this.selectGroup(order[(i + (e.shiftKey ? -1 : 1) + order.length) % order.length]);
+    }
+  }
+
+  // Groups from the top-left, row by row (the order N steps through them).
+  groupsInOrder() {
+    const centre = (g) => this.groupCentre(g);
+    return [...this.groups].sort((a, b) => {
+      const [ca, cb] = [centre(a), centre(b)];
+      return Math.abs(ca.y - cb.y) > this.puzzle.pieceH / 2 ? ca.y - cb.y : ca.x - cb.x;
+    });
+  }
+
+  groupCentre(group) {
+    const { left, top, right, bottom } = group.bounds;
+    return { x: group.x + (left + right) / 2, y: group.y + (top + bottom) / 2 };
+  }
+
+  // The group nearest to the selected one in direction (dx, dy); any nearby one for (0, 0).
+  nearestGroup(dx, dy) {
+    const from = this.selected && this.groups.has(this.selected) ? this.groupCentre(this.selected)
+      : { x: this.worldWidth / 2, y: this.worldHeight / 2 };
+    let best = null;
+    let bestScore = Infinity;
+    for (const group of this.groups) {
+      if (group === this.selected || this.isRemoteHeld(group)) continue;
+      const c = this.groupCentre(group);
+      const vx = c.x - from.x;
+      const vy = c.y - from.y;
+      const distance = Math.hypot(vx, vy);
+      const along = vx * dx + vy * dy;
+      if ((dx || dy) && along <= distance * 0.4) continue; // not in that direction
+      const score = distance + (dx || dy ? (distance - along) * 2 : 0); // straight ahead counts as nearer
+      if (score < bestScore) {
+        bestScore = score;
+        best = group;
+      }
+    }
+    return best ?? this.selected;
+  }
+
+  selectGroup(group) {
+    if (!group) return;
+    this.selected?.el.classList.remove('kb-selected');
+    this.selected = group;
+    group.el.classList.add('kb-selected');
+    this.keepInView(group);
+    const n = group.pieces.length;
+    this.announce?.(n > 1 ? `Group of ${n} pieces. Space picks it up.` : 'Piece selected. Space picks it up.');
+  }
+
+  keyboardPickUp() {
+    const group = this.selected;
+    if (this.isRemoteHeld(group)) return this.announce?.('Your friend has this one.');
+    this.pickUp(group, this.groupCentre(group), { pointerId: 'keyboard' });
+    this.announce?.('Picked up. Move it with the arrow keys, Space puts it down.');
+  }
+
+  keyboardDrop() {
+    const { group, joined } = this.putDown();
+    if (this.groups.size === 1) return; // finished: the puzzle says so itself
+    this.selectGroup(group);
+    this.announce?.(joined ? `Joined! ${Math.round(this.progress() * 100)}% done.` : 'Put down.');
+  }
+
+  // Scrolls a zoomed table so the group is on screen.
+  keepInView(group) {
+    const { x, y, zoom } = this.view;
+    const c = this.groupCentre(group);
+    const sx = c.x * zoom + x;
+    const sy = c.y * zoom + y;
+    const w = this.table.clientWidth;
+    const h = this.table.clientHeight;
+    const margin = 80;
+    if (sx > margin && sx < w - margin && sy > margin && sy < h - margin) return;
+    this.setView(w / 2 - c.x * zoom, h / 2 - c.y * zoom, zoom, { animate: true });
   }
 
   /* ---------- Zoom and pan ---------- */
@@ -1051,6 +1181,7 @@ export class PuzzleGame {
     for (const [type, fn] of Object.entries(this.handlers)) this.table.removeEventListener(type, fn);
     window.removeEventListener('resize', this.onResize);
     this.table.classList.remove('in-pouch', 'zoomed', 'panning');
+    this.table.removeAttribute('tabindex');
     this.table.style.backgroundImage = '';
     this.table.replaceChildren();
   }
