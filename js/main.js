@@ -1319,6 +1319,12 @@ document.addEventListener('keydown', (e) => {
   else if (key === '0' && state.game) state.game.resetView();
 });
 
+/* ---------- Works offline after the first visit (see sw.js) ---------- */
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('sw.js').catch(() => {}); // without it, everything still works online
+}
+
 /* ---------- Settings and tips ---------- */
 
 let closeGuide = null;

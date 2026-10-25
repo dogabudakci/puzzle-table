@@ -63,7 +63,8 @@ STREAM_SECONDS = 600  # live-update connections are renewed this often, re-check
 OFFLINE_GRACE = 8  # seconds before friends see someone go offline (a renewing connection isn't leaving)
 
 # Only these are ever served; the database, tools, original photos and hidden files are not.
-PUBLIC_FILES = {"/", "/index.html", "/styles.css", "/privacy.html", "/terms.html", "/manifest.webmanifest", "/admin.html"}
+PUBLIC_FILES = {"/", "/index.html", "/styles.css", "/privacy.html", "/terms.html", "/manifest.webmanifest", "/admin.html",
+                "/sw.js"}
 PUBLIC_DIRS = ("/js/", "/assets/", "/vendor/")
 # Pages with the site's details filled in ({{OPERATOR}} etc.), so they live in one place: the settings.
 PAGES = {"/": "index.html", "/index.html": "index.html", "/privacy.html": "privacy.html", "/terms.html": "terms.html",
