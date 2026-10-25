@@ -96,6 +96,17 @@ check(get("/")[2].decode().count('content="http://localhost') >= 2, "og tags use
 for path, kind in (("/manifest.webmanifest", "application/manifest+json"), ("/assets/fonts/inter-normal-latin.woff2", "font/woff2"),
                    ("/js/main.js", "text/javascript"), ("/assets/og-image.jpg", "image/jpeg"), ("/assets/icons/icon.svg", "image/svg+xml")):
     check(get(path)[1]["Content-Type"].startswith(kind), f"{path} is {kind}")
+# Encoded addresses must not reach anything outside the public files (this once worked).
+for sneaky in ("/assets/%2e%2e/tools/serve.py", "/assets/%2E%2E/render.yaml", "/js/%2e%2e/tools/accounts.py",
+               "/assets/library/%2e%2e%2f%2e%2e%2ftools/db.py", "/vendor/..%2frequirements.txt", "/assets/.%2e/tools/serve.py",
+               "/assets/%2e%2e%5ctools%5cserve.py", "/assets/fonts/%2e%2e/%2e%2e/.gitignore", "/%2e%2e/etc/passwd",
+               "/js/%252e%252e/tools/serve.py", "/data/puzzle.db", "/assets/%2e%2e/data/puzzle.db", "/library/", "/tests/test_safety.py"):
+    req = urllib.request.Request(BASE + sneaky)
+    try:
+        urllib.request.urlopen(req)
+        check(False, f"private file reachable: {sneaky}")
+    except urllib.error.HTTPError as e:
+        check(e.code == 404, f"{sneaky} -> {e.code}")
 csp = get("/")[1]["Content-Security-Policy"]
 check("googleapis" not in csp and "font-src 'self'" in csp, "no Google in CSP")
 

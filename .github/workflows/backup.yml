@@ -1,0 +1,51 @@
+# Every night: a backup of the online database, encrypted, kept on GitHub (apart from Render and
+# Neon) for 30 days, and restored into a throwaway database to prove it can really be restored.
+#
+# Needs two secrets (GitHub > Settings > Secrets and variables > Actions):
+#   NEON_DATABASE_URL   the Neon connection string
+#   BACKUP_PASSPHRASE   a long passphrase; keep it somewhere safe: without it a backup can't be opened
+# To open a backup: gpg --decrypt puzzle-backup.json.gz.gpg > puzzle-backup.json.gz
+name: Nightly backup
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - name: Back up the online database
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: python tools/backup.py --out puzzle-backup.json.gz
+      - name: Check the backup restores completely
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: python tools/backup.py --verify puzzle-backup.json.gz
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$BACKUP_PASSPHRASE" || { echo "BACKUP_PASSPHRASE is not set"; exit 1; }
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 --output puzzle-backup.json.gz.gpg puzzle-backup.json.gz
+          shred -u puzzle-backup.json.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: puzzle-backup-${{ github.run_id }}
+          path: puzzle-backup.json.gz.gpg
+          retention-days: 30

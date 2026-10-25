@@ -73,8 +73,14 @@ def challenge(first_faster):
     mid = a.call("match/create", {"friend": joe_id, "mode": "challenge", "picks": "same", "pieces": 12, "puzzle": lib})[1]["id"]
     b.call("match/respond", {"id": mid, "accept": True})
     fast, slow = (a, b) if first_faster else (b, a)
-    fast.call("match/begin", {"id": mid}); fast.call("match/finish", {"id": mid})
-    slow.call("match/begin", {"id": mid}); time.sleep(0.3); slow.call("match/finish", {"id": mid})
+    for player, extra in ((fast, 0), (slow, 0.6)):
+        began = time.time()
+        player.call("match/begin", {"id": mid})
+        for k in range(1, 12):  # solved for real: the server checks every join
+            player.call("match/join", {"id": mid, "pieces": list(range(k + 1))})
+            time.sleep(0.11)
+        time.sleep(max(0, began + 12 * 0.4 + 0.2 + extra - time.time()))
+        player.call("match/finish", {"id": mid})
 challenge(True)
 challenge(False)
 challenge(True)

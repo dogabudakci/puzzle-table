@@ -27,7 +27,6 @@ export class MatchSession {
     this.game = null;
     this.ended = false;  // the friend left, or the game was decided: nothing more is sent
     this.started = false;
-    this.lastShare = 0;
     this.countdownTimer = null;
   }
 
@@ -248,12 +247,18 @@ export class MatchSession {
     this.send({ type: 'react', reaction });
   }
 
-  // In a race, the friend's progress goes out whenever this player's grows by a step.
-  progress(share) {
-    if (this.mode !== 'race' || this.ended || !this.started) return;
-    if (share < 1 && share - this.lastShare < 0.02) return;
-    this.lastShare = share;
-    this.send({ type: 'progress', share });
+  // Races and challenges: every join goes to the server, which keeps its own record of the puzzle.
+  // A win only counts once that record is complete (and the friend's progress bar comes from it).
+  reportJoin(pieces) {
+    if (this.mode === 'together' || this.ended) return;
+    const send = (tries) => api('match/join', { id: this.id, pieces }).catch(async (err) => {
+      if (tries > 0 && /Too many|reach the server/.test(err.message)) {
+        await new Promise((r) => setTimeout(r, 300));
+        return send(tries - 1);
+      }
+      return null; // a later join reports the whole group again, so nothing is lost for good
+    });
+    this.enqueue(() => send(3));
   }
 
   /* ---------- The friend's chip in the toolbar ---------- */
@@ -282,7 +287,15 @@ export class MatchSession {
   }
 
   async finish(result) {
-    return api('match/finish', { id: this.id, ...result });
+    for (let tries = 0; ; tries++) {
+      try {
+        return await api('match/finish', { id: this.id, ...result });
+      } catch (err) {
+        // The last join may still be on its way: give the server a moment to count it.
+        if (tries >= 3 || !/finished yet/.test(err.message)) throw err;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
   }
 
   async details() {

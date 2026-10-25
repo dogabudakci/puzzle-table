@@ -1982,6 +1982,8 @@ button, input { font: inherit; color: inherit; }
 .setting-row input[type="range"] { width: 48%; accent-color: var(--accent); }
 .settings-tables .table-picker { grid-template-columns: repeat(3, 1fr); }
 .setting-select { padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: 500 .9rem var(--font-ui); }
+.sound-test-result { margin: 6px 0 0; color: var(--ink-2); font-size: .82rem; }
+.sound-test-result:empty { display: none; }
 .settings-keys { margin: 18px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.6; }
 .switch { position: relative; display: inline-block; width: 44px; height: 26px; flex-shrink: 0; }
 .switch input { position: absolute; inset: 0; z-index: 1; margin: 0; opacity: 0; cursor: var(--cursor-pointer); }
@@ -2039,6 +2041,28 @@ button, input { font: inherit; color: inherit; }
 }
 .notice > .icon { color: #f0c27a; }
 .notice .notice-close { width: 30px; height: 30px; color: var(--chrome-muted); }
+
+/* Whether the unfinished puzzle is saved */
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin-left: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--chrome-muted);
+  font: 500 .76rem var(--font-ui);
+  white-space: nowrap;
+}
+.save-status .icon { width: 14px; height: 14px; }
+.save-status[data-state="saving"] .icon { display: none; }
+.save-status[data-state="saved"] { color: #8fd3a5; animation: toast-in .25s ease-out; }
+.save-status[data-state="error"] { background: rgba(229, 83, 61, .2); color: #ffb3a6; cursor: var(--cursor-pointer); }
+.save-status[data-state="error"] .icon { display: none; }
+@media (max-width: 640px) { .save-status span { display: none; } .save-status[data-state="error"] span { display: inline; } }
 
 /* The friend in the game toolbar */
 .friend-chip {

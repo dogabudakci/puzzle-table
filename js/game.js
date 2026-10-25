@@ -34,9 +34,10 @@ export class PuzzleGame {
   // autoPouch: the pouch can't be clicked; it opens with openPouch() (live games start together).
   // shared: { onGrab(group), onMove(group), onDrop(group) } while playing on a friend's table.
   // onZoom(zoom): the view's zoom changed (1 = the whole table).
+  // onJoin(pieces): pieces just joined into one group (reported to the server in races and challenges).
   // worldSize: { width, height } for a table of fixed size (a shared one); otherwise it's the screen's.
   constructor(tableEl, photo, { cols, rows }, tableId, {
-    onSpill, onProgress, onComplete, onChange, onZoom, seed, restore, autoPouch = false, shared = null, worldSize = null,
+    onSpill, onProgress, onComplete, onChange, onZoom, onJoin, seed, restore, autoPouch = false, shared = null, worldSize = null,
   } = {}) {
     this.table = tableEl;
     this.world = document.createElement('div');
@@ -50,6 +51,7 @@ export class PuzzleGame {
     this.table.append(this.world);
     this.view = { x: 0, y: 0, zoom: 1 };
     this.onZoom = onZoom;
+    this.onJoin = onJoin;
     this.pointers = new Map(); // touches/pointers on the table that aren't moving a piece (pan, pinch)
     this.pan = null;
     this.onChange = onChange; // called after anything worth saving changes
@@ -697,6 +699,7 @@ export class PuzzleGame {
     }
     if (!snapped) return false;
 
+    this.onJoin?.(group.pieces.map((p) => p.index));
     playSnap();
     this.snapEffect(group, dropped);
     this.onProgress?.(this.progress(), this.connectedPieces(), this.puzzle.pieces.length);

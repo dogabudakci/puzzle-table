@@ -56,6 +56,18 @@ def check(cond, what):
     ok += 1
 
 
+def solve(player, mid, count, started_at=None):
+    """Joins every piece, one neighbour at a time (row by row), as the app reports them, and waits
+    until a person could have done it (400 ms per piece)."""
+    for k in range(1, count):
+        r = player.call("match/join", {"id": mid, "pieces": list(range(k + 1))})
+        assert r[0] == 200, r
+        time.sleep(0.11)
+    if started_at:
+        time.sleep(max(0, started_at + count * 0.4 + 0.2 - time.time()))
+    return r[1]
+
+
 tag = str(int(time.time() * 1000) % 10 ** 8)
 ann, ben, eve = Player("ann"), Player("ben"), Player("eve")
 check(ann.call("signup", {"identifier": f"ann{tag}", "password": "ann plays puzzles"})[0] == 201, "signup ann")
@@ -132,6 +144,9 @@ check(not r["ok"] and r["resync"] and len(r["layout"]) == 11, "partial group ref
 check(ben.call("match/event", {"id": mid, "type": "grab", "pieces": [99]})[0] == 400, "bad piece index")
 check(ben.call("match/event", {"id": mid, "type": "move", "piece": [1], "nx": 0, "ny": 0})[0] in (200,), "list piece harmless")
 check(ben.call("match/event", {"id": mid, "type": "drop", "pieces": [2], "nx": float("1e309") if False else 1e9, "ny": 0})[0] == 400, "huge position refused")
+ben.call("match/event", {"id": mid, "type": "grab", "pieces": [7]})
+r = ben.call("match/event", {"id": mid, "type": "drop", "pieces": [0, 1, 7], "nx": 0, "ny": 0})[1]
+check(not r["ok"] and r["resync"], "shared table: pieces that aren't neighbours can't join")
 # play to the end, alternating
 groups = [0]
 for i in range(2, 12):
@@ -162,9 +177,17 @@ check(eve.call(f"match/{rid}/photo")[0] == 404, "outsider can't get photo")
 ann.call("match/ready", {"id": rid})
 st = ben.call("match/ready", {"id": rid})[1]
 time.sleep((st["startAt"] - st["now"]) / 1000 + 0.1)
-ann.call("match/event", {"id": rid, "type": "progress", "share": 0.5})
-check(ben.wait("game", lambda d: d["type"] == "progress")["share"] == 0.5, "ben sees ann's progress")
+race_start = time.time()
+check(ann.call("match/event", {"id": rid, "type": "progress", "share": 0.99})[0] == 400, "claimed progress isn't accepted")
+check(ann.call("match/join", {"id": rid, "pieces": [0, 1, 2]})[0] == 200, "a real join")
+check(ben.wait("game", lambda d: d["type"] == "progress")["share"] > 0, "ben sees ann's progress, as the server counted it")
+check(ann.call("match/join", {"id": rid, "pieces": [0, 5]})[0] == 400, "pieces that aren't neighbours can't join")
+check(ann.call("match/join", {"id": rid, "pieces": [0, 999]})[0] == 400, "pieces that don't exist can't join")
 check(ann.call("match/event", {"id": rid, "type": "grab", "pieces": [0]})[0] == 400, "no grabs in a race")
+check(ben.call("match/finish", {"id": rid, "stars": 3})[0] == 409, "no win without solving")
+solve(ben, rid, 24)
+check(ben.call("match/finish", {"id": rid, "stars": 3})[0] == 409, "no win faster than a person could solve it")
+time.sleep(max(0, race_start + 24 * 0.4 + 0.3 - time.time()))
 r = ben.call("match/finish", {"id": rid, "stars": 3, "moves": 30, "hints": 0})[1]
 check(r["timeMs"] > 0, "ben finishes")
 fin = ann.wait("game", lambda d: d["type"] == "finished")
@@ -178,16 +201,21 @@ s, d = ben.call("match/create", {"friend": ann_id, "mode": "challenge", "picks":
 cid = d["id"]
 ann.call("match/respond", {"id": cid, "accept": True})
 check(ann.call("match/finish", {"id": cid})[0] == 409, "can't finish before beginning")
+check(ann.call("match/join", {"id": cid, "pieces": [0, 1]})[0] == 409, "no joins before beginning")
+began = time.time()
 ann.call("match/begin", {"id": cid})
 time.sleep(0.4)
 b1 = ann.call("match/begin", {"id": cid})[1]["beganAt"]
-ann.call("match/finish", {"id": cid, "stars": 2})
+solve(ann, cid, 12, began)
+check(ann.call("match/finish", {"id": cid, "stars": 2})[0] == 200, "ann finishes the challenge")
 m = ben.call(f"match/{cid}")[1]["match"]
 check(m["them"]["finished"] and m["them"]["timeMs"] is None, "ben can't see ann's time before playing")
+began = time.time()
 ben.call("match/begin", {"id": cid})
+solve(ben, cid, 12, began)
 ben.call("match/finish", {"id": cid, "stars": 3})
 m = ben.call(f"match/{cid}")[1]["match"]
-check(m["status"] == "finished" and m["winner"] == "me" and m["them"]["timeMs"] >= 400, f"challenge settled {m}")
+check(m["status"] == "finished" and m["winner"] in ("me", "friend") and m["them"]["timeMs"] >= 4800, f"challenge settled {m}")
 
 # leaving / declining, removing a friend ends open games
 s, d = ann.call("match/create", {"friend": ben_id, "mode": "race", "picks": "same", "pieces": 12, "puzzle": lib})

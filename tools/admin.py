@@ -1,15 +1,21 @@
 """The site owner's tools: reports about players, suspending or deleting accounts, and a few numbers.
 
-Only the usernames listed in PUZZLE_ADMIN_USERNAMES (comma-separated) can use them; to everyone
-else the admin API looks like it doesn't exist. Every action is printed to the server log.
+Admin rights belong to an account itself (its permanent id), never to a name: they're set only
+from the command line by whoever runs the server, on an account that already exists:
+
+  python3 tools/admin.py grant USERNAME_OR_EMAIL      (and: revoke …, list)
+
+with DATABASE_URL set to reach the online database. To everyone else the admin API looks like it
+doesn't exist. Every action is printed to the server log.
 """
 
-import os
+import sys
 import time
+from pathlib import Path
 
-from accounts import AccountError
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from accounts import AccountError  # noqa: E402
 
-ADMINS = {name.strip().lower() for name in (os.environ.get("PUZZLE_ADMIN_USERNAMES") or "").split(",") if name.strip()}
 ACTIONS = {"dismiss", "suspend", "unsuspend", "delete"}
 
 
@@ -19,13 +25,17 @@ class Admin:
         self.social = social
         self.hub = hub
         accounts.database.add_column("reports", "status", "TEXT NOT NULL DEFAULT 'open'")
+        accounts.database.add_column("users", "is_admin", "INTEGER NOT NULL DEFAULT 0")
 
     def connect(self):
         return self.accounts.connect()
 
-    @staticmethod
-    def is_admin(user):
-        return bool(user and user.get("username") and user["username"] in ADMINS)
+    def is_admin(self, user):
+        if not user:
+            return False
+        with self.connect() as db:
+            row = db.execute("SELECT is_admin FROM users WHERE id = ? AND suspended = 0", (user["id"],)).fetchone()
+        return bool(row and row["is_admin"])
 
     def require(self, user):
         if not self.is_admin(user):
@@ -82,11 +92,7 @@ class Admin:
         with self.connect() as db:
             one = lambda sql, *args: db.execute(sql, args).fetchone()["n"]  # noqa: E731
             week = int(time.time()) - 7 * 86400
-            storage = db.execute(
-                "SELECT COALESCE((SELECT SUM(LENGTH(image)) FROM gallery), 0)"
-                " + COALESCE((SELECT SUM(LENGTH(photo) + LENGTH(thumb)) FROM progress), 0)"
-                " + COALESCE((SELECT SUM(LENGTH(image)) FROM match_puzzles), 0) AS n"
-            ).fetchone()["n"]
+            storage = self.accounts.database.size(db)
             return {
                 "players": one("SELECT COUNT(*) AS n FROM users"),
                 "newThisWeek": one("SELECT COUNT(*) AS n FROM users WHERE created_at > ?", week),
@@ -98,3 +104,43 @@ class Admin:
                 "storageMB": round(int(storage or 0) / 1024 / 1024, 1),
                 "onlineNow": self.hub.online_count(),
             }
+
+
+def set_admin(identifier, value):
+    """Gives (or takes away) admin rights for an existing account, found by username or email."""
+    import os
+    from accounts import DB_PATH, Accounts
+    from social import Hub, Social
+    accounts = Accounts(os.environ.get("PUZZLE_DB") or DB_PATH)
+    social = Social(accounts, Hub())
+    Admin(accounts, social, social.hub)
+    value_name = (identifier or "").strip().lower()
+    with accounts.connect() as db:
+        row = db.execute("SELECT id, username, email FROM users WHERE username = ? OR email = ?",
+                         (value_name, value_name)).fetchone()
+        if not row:
+            raise SystemExit(f"No account with the username or email {identifier!r}. Create it first, then run this again.")
+        db.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if value else 0, row["id"]))
+    who = row["username"] or row["email"]
+    print(f"{who} (account #{row['id']}) is {'now an admin' if value else 'no longer an admin'}.")
+
+
+def list_admins():
+    import os
+    from accounts import DB_PATH, Accounts
+    from social import Hub, Social
+    accounts = Accounts(os.environ.get("PUZZLE_DB") or DB_PATH)
+    social = Social(accounts, Hub())
+    Admin(accounts, social, social.hub)
+    with accounts.connect() as db:
+        rows = db.execute("SELECT id, username, email FROM users WHERE is_admin = 1 ORDER BY id").fetchall()
+    print("\n".join(f"#{r['id']} {r['username'] or r['email']}" for r in rows) or "No admins yet.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] in ("grant", "revoke"):
+        set_admin(sys.argv[2], sys.argv[1] == "grant")
+    elif sys.argv[1:] == ["list"]:
+        list_admins()
+    else:
+        print(__doc__)

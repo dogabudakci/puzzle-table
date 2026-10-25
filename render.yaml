@@ -36,5 +36,3 @@ services:
         sync: false
       - key: PUZZLE_ADMIN_EMAIL    # where reports about players are sent (can be the same as the contact email)
         sync: false
-      - key: PUZZLE_ADMIN_USERNAMES  # your username(s), comma-separated: they can open /admin.html
-        sync: false

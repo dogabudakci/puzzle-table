@@ -5,8 +5,9 @@ Security choices:
   delete another player's data, even by guessing ids.
 - Incoming data is checked field by field against what the app actually sends; anything else
   is dropped. Images must really be JPEGs (checked by their first bytes) and are size-limited.
-- Each player has a cap on how many puzzles and how much image data they can store, and all
-  players together have one too, so the database (0.5 GB on Neon's free plan) never fills up.
+- Each player has a cap on how many puzzles and how much image data they can store, and the
+  whole database has one too (its real size, measured by the database), so it never reaches the
+  0.5 GB of Neon's free plan.
 - All rows reference the user with ON DELETE CASCADE, so deleting an account deletes its data.
 """
 
@@ -124,12 +125,9 @@ class UserData:
         """Refuses an upload that would take the player, or the whole site, over its storage limit."""
         if self.storage_used(db, user_id) - freed + added > MAX_STORAGE_BYTES:
             raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409)
-        total = db.execute(
-            "SELECT COALESCE((SELECT SUM(LENGTH(image)) FROM gallery), 0)"
-            " + COALESCE((SELECT SUM(LENGTH(photo) + LENGTH(thumb)) FROM progress), 0)"
-            " + COALESCE((SELECT SUM(LENGTH(image)) FROM match_puzzles), 0) AS used"
-        ).fetchone()["used"]
-        if int(total or 0) - freed + added > MAX_TOTAL_STORAGE:
+        # The whole database's real size (not just the pictures), so the plan's limit is never reached.
+        total = self.accounts.database.size(db)
+        if total - freed + added > MAX_TOTAL_STORAGE:
             raise AccountError("Puzzle Table's storage is full right now, so this couldn't be saved. Sorry!", 507)
 
     def storage_used(self, db, user_id):
@@ -255,18 +253,25 @@ class UserData:
                 (user_id, encoded, int(time.time())),
             )
 
-    def save_progress_photo(self, user_id, body):
+    def save_progress_full(self, user_id, body):
+        """A new puzzle's first save: photo, thumbnail and layout together, in one step. The earlier
+        save is only replaced once this one is safely stored, so a failure never loses both."""
         photo = jpeg(body.get("photo"), MAX_PROGRESS_PHOTO, "photo")
         thumb = jpeg(body.get("thumb"), 512 * 1024, "thumbnail")
+        meta = body.get("progress")
+        if not isinstance(meta, dict):
+            raise AccountError("Invalid save.")
+        encoded = json.dumps(meta)
+        if len(encoded) > MAX_PROGRESS_JSON:
+            raise AccountError("This puzzle is too large to save.", 413)
         with self.connect() as db:
             old = db.execute("SELECT LENGTH(photo) + LENGTH(thumb) AS size FROM progress WHERE user_id = ?", (user_id,)).fetchone()
             self.check_space(db, user_id, int((old["size"] or 0) if old else 0), len(photo) + len(thumb))
-            # A new photo starts a new save: the old layout belonged to the previous puzzle.
             db.execute(
-                "INSERT INTO progress (user_id, meta, photo, thumb, saved_at) VALUES (?, '{}', ?, ?, ?)"
-                " ON CONFLICT(user_id) DO UPDATE SET meta = '{}', photo = excluded.photo, thumb = excluded.thumb,"
-                " saved_at = excluded.saved_at",
-                (user_id, photo, thumb, int(time.time())),
+                "INSERT INTO progress (user_id, meta, photo, thumb, saved_at) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(user_id) DO UPDATE SET meta = excluded.meta, photo = excluded.photo,"
+                " thumb = excluded.thumb, saved_at = excluded.saved_at",
+                (user_id, encoded, photo, thumb, int(time.time())),
             )
 
     def progress_image(self, user_id, which):

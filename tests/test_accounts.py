@@ -66,7 +66,7 @@ a = client()
 s, d, h = call(a, "signup", {"identifier": email, "password": "correct horse battery"})
 check(s == 201 and d["user"]["email"] == email and not d["user"]["email_verified"], f"signup {s} {d}")
 check("password_hash" not in d["user"], "no hash leaked")
-check("HttpOnly" in h["Set-Cookie"] and "SameSite=Strict" in h["Set-Cookie"], "cookie flags")
+check("httponly" in h["Set-Cookie"].lower() and "samesite=strict" in h["Set-Cookie"].lower(), "cookie flags")
 check(call(a, "me")[1]["user"]["id"] == d["user"]["id"], "me")
 uid = d["user"]["id"]
 
@@ -109,8 +109,11 @@ check(call(a, "daily")[1]["days"] == ["2026-10-24", "2026-10-25"], "daily")
 
 # progress
 check(call(a, "progress")[1]["progress"] is None, "no progress")
-check(call(a, "progress/photo", {"photo": B64, "thumb": B64})[0] == 200, "progress photo")
-check(call(a, "progress")[1]["progress"] is None, "photo only, no layout")
+check(call(a, "progress/full", {"photo": B64, "thumb": B64, "progress": {"savedAt": 4, "pieces": [1]}})[0] == 200, "first save: photo and layout together")
+check(call(a, "progress")[1]["progress"]["pieces"] == [1], "first save stored")
+# A new puzzle whose save fails half-way (a broken photo) leaves the earlier save untouched.
+check(call(a, "progress/full", {"photo": "bm90IGEganBlZw==", "thumb": B64, "progress": {"savedAt": 9, "pieces": [7]}})[0] == 400, "broken new save refused")
+check(call(a, "progress")[1]["progress"]["pieces"] == [1], "earlier save kept when the new one failed")
 call(a, "progress", {"progress": {"savedAt": 5, "pieces": [1, 2, 3]}})
 check(call(a, "progress")[1]["progress"]["pieces"] == [1, 2, 3], "progress layout")
 check(call(a, "progress/thumb")[1] == JPEG, "progress thumb")
@@ -142,6 +145,25 @@ check(call(a, "me")[1]["user"]["email"] == name + "2@example.com", "email change
 r = client()
 codes = [call(r, "login", {"identifier": name + "b", "password": "wrong password!"})[0] for _ in range(6)]
 check(codes[:5] == [401] * 5 and codes[5] == 429, f"login rate limit {codes}")
+
+# An expired sign-in stops working everywhere (as if 30 days had passed)
+import os, sys as _sys
+_sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+from db import Database  # noqa: E402
+x = client()
+call(x, "signup", {"identifier": f"exp{name}", "password": "expiring phrase here"})
+check(call(x, "me")[1]["user"] is not None, "signed in")
+database = Database(os.environ.get("PUZZLE_DB"), os.environ.get("DATABASE_URL"))
+with database.connect() as db:
+    db.execute("UPDATE sessions SET expires_at = 1 WHERE user_id = (SELECT id FROM users WHERE username = ?)", (f"exp{name}",))
+check(call(x, "me")[1]["user"] is None, "expired sign-in: signed out")
+check(call(x, "progress", {"progress": {"savedAt": 1}})[0] == 401, "expired sign-in can't save")
+check(call(x, "gallery")[0] == 401, "expired sign-in can't read the gallery")
+try:
+    x.open(urllib.request.Request(BASE + "/api/events"))
+    check(False, "live updates refused after expiry")
+except urllib.error.HTTPError as e:
+    check(e.code == 401, "live updates refused after expiry")
 
 # delete account removes data
 check(call(a, "delete-account", {"password": "nope nope nope"})[0] == 401, "delete needs password")

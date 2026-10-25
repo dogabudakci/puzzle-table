@@ -1,3 +1,5 @@
-# Only needed online, to talk to the PostgreSQL database (Neon). Running on your own computer needs nothing extra.
-psycopg[binary]==3.3.6
+# The server's packages (installed by Render, and by "Start Puzzle Table.command" on this Mac).
+starlette==1.10.0      # web framework: routes, requests, responses
+uvicorn==0.54.0        # production web server
+psycopg[binary]==3.3.6 # PostgreSQL (Neon), used when DATABASE_URL is set
 psycopg-pool==3.3.3

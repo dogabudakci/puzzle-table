@@ -3,13 +3,15 @@ import { pieceOptions } from './pieceOptions.js';
 import { PuzzleGame, MAX_ZOOM } from './game.js';
 import { cutLines, seededRandom } from './cutter.js';
 import { DEFAULT_TABLE, createTablePicker, getTable, tableTextureUrl } from './textures.js';
-import { isSoundOn, setSoundOn, soundVolume, setSoundVolume } from './effects.js';
+import { isSoundOn, setSoundOn, soundVolume, setSoundVolume, testSound } from './effects.js';
+import { withTimeout } from './audio.js';
 import { showGuide, guideSeen, resetGuide } from './guide.js';
+import { createSaver } from './saving.js';
 import { startTranslating, LANGUAGES, currentLanguage, setLanguage } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
 import {
   savePuzzle, listPuzzles, deletePuzzle, listAchievements, saveAchievements,
-  saveProgress, saveProgressPhoto, loadProgress, clearProgress,
+  loadProgress, clearProgress,
   setUser, moveGuestDataToAccount, puzzleImage, listAccountDays, addAccountDays, saveDailyResult, dailyBoard,
 } from './library.js';
 import {
@@ -571,15 +573,14 @@ async function startGame({ restore = null, match = null } = {}) {
         }, () => {});
       }
     },
-    onProgress: (share, connected, total) => {
-      showProgress(share, connected, total);
-      match?.progress(share);
-    },
+    onProgress: showProgress,
+    onJoin: match ? (pieces) => match.reportJoin(pieces) : null,
     onComplete: () => {
       if (match) return finishMatch(match);
       const { clock } = state;
       clock.pause();
       clearTimeout(saveTimer);
+      saver.stop();
       clearProgress().catch(() => {}).finally(refreshResume);
       showDailyDone(clock.elapsed, state.game.moves);
       const mysteryNote = $('mystery-note');
@@ -623,7 +624,9 @@ async function startGame({ restore = null, match = null } = {}) {
   });
   loading.hidden = true;
 
+  if (!match) saver.startGame(restore?.photo ? Promise.resolve(restore.photo) : photoBlobs(state.photo));
   if (match) {
+    saver.stop();
     match.attach(state.game);
     if (match.live) match.ready().catch((err) => showToast(err.message, 6000));
     return;
@@ -634,9 +637,6 @@ async function startGame({ restore = null, match = null } = {}) {
     showProgress(state.game.progress(), state.game.connectedPieces(), state.game.puzzle.pieces.length);
     state.clock.start();
     setPlayControls(true);
-  } else {
-    // One unfinished puzzle is kept at a time: this one replaces any earlier save.
-    saveResumePhoto(state.photo);
   }
 }
 
@@ -796,22 +796,24 @@ function canvasBlob(canvas, quality = 0.9) {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
-// The photo is written once per game; the layout is saved after every move.
-async function saveResumePhoto(photo) {
-  try {
-    await clearProgress();
-    const thumbScale = Math.min(1, 360 / Math.max(photo.canvas.width, photo.canvas.height));
-    const thumb = document.createElement('canvas');
-    thumb.width = Math.round(photo.canvas.width * thumbScale);
-    thumb.height = Math.round(photo.canvas.height * thumbScale);
-    thumb.getContext('2d').drawImage(photo.canvas, 0, 0, thumb.width, thumb.height);
-    const [blob, thumbBlob] = await Promise.all([canvasBlob(photo.canvas, 0.85), canvasBlob(thumb, 0.8)]);
-    if (state.photo !== photo) return; // another game started meanwhile
-    await saveProgressPhoto({ blob, thumb: thumbBlob });
-  } catch {
-    // Storage unavailable: the game still plays, it just can't be continued later.
-  }
+// One unfinished puzzle is kept at a time. The photo goes with the first save of a game (and
+// only then replaces the earlier save); after that, just the layout and clock are saved.
+const saver = createSaver($('save-status'));
+
+async function photoBlobs(photo) {
+  const thumbScale = Math.min(1, 360 / Math.max(photo.canvas.width, photo.canvas.height));
+  const thumb = document.createElement('canvas');
+  thumb.width = Math.round(photo.canvas.width * thumbScale);
+  thumb.height = Math.round(photo.canvas.height * thumbScale);
+  thumb.getContext('2d').drawImage(photo.canvas, 0, 0, thumb.width, thumb.height);
+  const [blob, thumbBlob] = await Promise.all([canvasBlob(photo.canvas, 0.85), canvasBlob(thumb, 0.8)]);
+  return { blob, thumb: thumbBlob };
 }
+
+// Leaving with progress that couldn't be saved yet: the browser asks before closing the page.
+window.addEventListener('beforeunload', (e) => {
+  if (saver.hasUnsaved()) e.preventDefault();
+});
 
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -822,7 +824,7 @@ function saveNow() {
   clearTimeout(saveTimer);
   const { game, clock } = state;
   if (!game?.ready || game.groups.size < 2 || !clock || state.match) return Promise.resolve();
-  return saveProgress({
+  return saver.save({
     name: state.photo.name,
     pieces: state.pieces,
     seed: state.seed,
@@ -838,7 +840,7 @@ function saveNow() {
     mystery: state.mystery,
     peeked,
     savedAt: Date.now(),
-  }).catch(() => {});
+  });
 }
 
 // Closing or hiding the tab saves straight away, including the time on the clock.
@@ -1357,6 +1359,17 @@ $('set-music-volume').addEventListener('input', (e) => {
   volumeInput.value = e.target.value;
   volumeInput.dispatchEvent(new Event('input')); // the music panel's slider does the rest
 });
+$('set-test-sound').addEventListener('click', async () => {
+  const result = $('sound-test-result');
+  result.textContent = 'Playing a short chime…';
+  const outcome = await testSound();
+  result.textContent = outcome.ok
+    ? 'You should hear two soft notes. If not, check the device volume and silent switch.'
+    : outcome.reason === 'blocked'
+      ? `This browser is holding sound back (${outcome.state}). Tap the page once, then try again.`
+      : 'This browser can’t play sound here.';
+});
+
 $('set-guide').addEventListener('click', () => {
   resetGuide();
   settingsDialog.close();
@@ -1427,7 +1440,8 @@ async function playMusic(source) {
       playback = playMood(musicSettings.mood, musicSettings.volume);
     }
     showMusicState();
-    await playback;
+    // "Starting…" until it really plays; a start-up that never finishes is treated as a failure.
+    await withTimeout(Promise.resolve(playback), 5000, 'Music start-up timed out');
     if (request !== musicRequest) return;
     musicStarting = false;
     showMusicState();
@@ -1437,7 +1451,9 @@ async function playMusic(source) {
     stopMusic();
     ownAudio.pause();
     showMusicState();
-    $('music-now').textContent = 'Audio could not start. Press Play to try again.';
+    $('music-now').textContent = /timed out/.test(error?.message)
+      ? 'Sound didn’t start. Check the device isn’t muted (and its silent switch), then press Play.'
+      : 'Audio could not start. Press Play to try again.';
     console.warn('Puzzle music could not start:', error);
   }
 }
@@ -1457,7 +1473,7 @@ function showMusicState() {
   const what = musicSource === 'own' && ownTracks.length
     ? ownTracks[ownIndex].name
     : MOODS.find((m) => m.id === musicSettings.mood).name;
-  $('music-now').textContent = playing ? `Playing · ${what}` : `Paused · ${what}`;
+  $('music-now').textContent = musicStarting ? `Starting… · ${what}` : playing ? `Playing · ${what}` : `Paused · ${what}`;
   musicBtn.classList.toggle('playing', playing);
   renderMoods();
 }

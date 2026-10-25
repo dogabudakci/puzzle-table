@@ -1,0 +1,28 @@
+# Runs every server test on each push and pull request: once with SQLite (as on a Mac) and once
+# with PostgreSQL (as on Neon).
+name: Tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - name: Server tests (SQLite)
+        run: python tests/run_server_tests.py
+      - name: Server tests (PostgreSQL)
+        run: python tests/run_server_tests.py --postgres postgresql://postgres:postgres@localhost:5432/postgres

@@ -10,3 +10,6 @@ backups/
 # The original photos for the library (large). The site uses the processed copies in
 # assets/library/, which tools/build_library.py makes from them; the originals stay on this Mac.
 library/
+
+# Local Python packages (the start file keeps them outside this folder; just in case)
+.venv/

@@ -1,6 +1,6 @@
 // Sounds (synthesised with Web Audio, no files) and the confetti celebration.
 
-import { resumeAudio } from './audio.js';
+import { resumeAudio, getAudioContext, withTimeout } from './audio.js';
 
 const SOUND_KEY = 'puzzle-sound';
 const VOLUME_KEY = 'puzzle-sound-volume';
@@ -69,6 +69,36 @@ async function context() {
     console.warn('Puzzle sound could not start:', error);
     return null;
   }
+}
+
+// For Settings' "Test sound": a gentle two-note chime, played even when sound effects are off,
+// and what the browser says about its audio, to tell "muted" from "blocked" from "broken".
+export async function testSound() {
+  let ctx;
+  try {
+    ctx = getAudioContext();
+  } catch {
+    return { ok: false, reason: 'unsupported' };
+  }
+  try {
+    await withTimeout(resumeAudio(), 3000, 'Audio start-up timed out');
+  } catch {
+    return { ok: false, reason: ctx.state === 'running' ? 'error' : 'blocked', state: ctx.state };
+  }
+  const now = ctx.currentTime;
+  for (const [i, freq] of [659.25, 880].entries()) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now + i * 0.16);
+    gain.gain.linearRampToValueAtTime(0.35, now + i * 0.16 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.16 + 0.5);
+    osc.connect(gain).connect(ctx.destination); // straight out: the test ignores the effects setting
+    osc.start(now + i * 0.16);
+    osc.stop(now + i * 0.16 + 0.55);
+  }
+  return { ok: true, state: ctx.state, rate: ctx.sampleRate };
 }
 
 // A short wooden "click", like two cardboard pieces pressing together.

@@ -10,6 +10,15 @@ export function getAudioContext() {
   return context;
 }
 
+// Rejects if `promise` hasn't settled within `ms` (audio start-up can hang, e.g. in Safari).
+export function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function resumeAudio() {
   const ctx = getAudioContext();
   // Safari can report "interrupted" as well as "suspended".

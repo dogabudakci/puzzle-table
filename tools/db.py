@@ -92,6 +92,14 @@ class Database:
                 if statement.strip():
                     db.execute(statement)
 
+    def size(self, db):
+        """How much room the whole database takes now, in bytes (tables, indexes and all)."""
+        if self.postgres:
+            return int(db.execute("SELECT pg_database_size(current_database()) AS n").fetchone()["n"])
+        pages = db.execute("PRAGMA page_count").fetchone()[0]
+        size = db.execute("PRAGMA page_size").fetchone()[0]
+        return int(pages * size)
+
     def add_column(self, table, column, definition):
         """Adds a column to a table made by an older version of the app, if it's missing."""
         with self.connect() as db:

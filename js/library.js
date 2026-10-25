@@ -11,6 +11,8 @@
 //               from the gallery never takes an achievement away.
 // saved:        the unfinished puzzle, so it can be continued later: 'current' holds the
 //               layout and clock, 'current-photo' the photo (written once per game).
+//               'recovery' / 'recovery-photo': a copy kept here when saving to the account
+//               failed, so nothing is lost; it's offered back if it's newer than the account's.
 
 import { api, apiBlob, blobToBase64 } from './api.js';
 
@@ -34,6 +36,19 @@ function openDb() {
     request.onerror = () => reject(request.error);
   });
   return dbPromise;
+}
+
+// Writes several records in one transaction: all of them are stored, or none.
+async function putAll(name, records) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(name, 'readwrite');
+    const store = tx.objectStore(name);
+    for (const record of records) store.put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
 }
 
 // Runs fn(store) in a transaction and resolves with the last request's result once it commits.
@@ -60,7 +75,17 @@ const local = {
     ]);
     return meta && photo ? { ...meta, photo } : null;
   },
-  clearProgress: () => withStore('saved', 'readwrite', (s) => s.clear()),
+  clearProgress: () => withStore('saved', 'readwrite', (s) => {
+    s.delete('current');
+    return s.delete('current-photo');
+  }),
+  loadRecovery: async () => {
+    const [meta, photo] = await Promise.all([
+      withStore('saved', 'readonly', (s) => s.get('recovery')),
+      withStore('saved', 'readonly', (s) => s.get('recovery-photo')),
+    ]);
+    return meta && photo && meta.userId === user?.id ? { ...meta, photo } : null;
+  },
 };
 
 const newUid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -101,8 +126,7 @@ export async function moveGuestDataToAccount() {
     const theirs = await api('progress').then((r) => r.progress, () => null);
     if (!theirs || (theirs.savedAt ?? 0) < (saved.savedAt ?? 0)) {
       const { photo, id, ...meta } = saved;
-      await uploadProgressPhoto(photo);
-      await api('progress', { progress: meta });
+      await uploadProgressFull(photo, meta);
     }
     await local.clearProgress();
   }
@@ -151,32 +175,58 @@ export async function saveAchievements(list) {
 
 /* ---------- The unfinished puzzle (one at a time) ---------- */
 
-async function uploadProgressPhoto({ blob, thumb }) {
+async function uploadProgressFull({ blob, thumb }, record) {
   const [photo, small] = await Promise.all([blobToBase64(blob), blobToBase64(thumb)]);
-  await api('progress/photo', { photo, thumb: small });
+  await api('progress/full', { photo, thumb: small, progress: record });
 }
 
-// keepalive lets the last save finish while the page closes (browsers allow up to 64 KB for that).
+// A new puzzle's first save: photo and layout together, replacing the earlier save in one step
+// (so the earlier one is kept until this one is safely stored).
+export async function saveProgressFull(photo, record) {
+  if (user) return uploadProgressFull(photo, record);
+  return putAll('saved', [{ ...record, id: 'current' }, { ...photo, id: 'current-photo' }]);
+}
+
+// Later saves: just the layout and clock. keepalive lets the last save finish while the page
+// closes (browsers allow up to 64 KB for that).
 export async function saveProgress(record) {
   if (!user) return withStore('saved', 'readwrite', (s) => s.put({ ...record, id: 'current' }));
   const body = { progress: record };
   return api('progress', body, { keepalive: JSON.stringify(body).length < 60000 });
 }
 
-export async function saveProgressPhoto(record) {
-  if (user) return uploadProgressPhoto(record);
-  return withStore('saved', 'readwrite', (s) => s.put({ ...record, id: 'current-photo' }));
+// When saving to the account fails: a copy on this device, so the progress isn't lost.
+export async function saveRecovery(photo, record) {
+  if (!user) return undefined;
+  return putAll('saved', [{ ...record, id: 'recovery', userId: user.id }, { ...photo, id: 'recovery-photo' }]);
 }
 
+export async function clearRecovery() {
+  return withStore('saved', 'readwrite', (s) => {
+    s.delete('recovery');
+    return s.delete('recovery-photo');
+  }).catch(() => {});
+}
+
+// The unfinished puzzle: the account's, or this device's recovery copy if that one is newer.
 export async function loadProgress() {
   if (!user) return local.loadProgress();
-  const { progress } = await api('progress');
+  const recovery = await local.loadRecovery().catch(() => null);
+  let progress = null;
+  try {
+    ({ progress } = await api('progress'));
+  } catch (err) {
+    if (recovery) return recovery; // offline: the copy here is all there is
+    throw err;
+  }
+  if (recovery && (!progress || (recovery.savedAt ?? 0) > (progress.savedAt ?? 0))) return recovery;
   if (!progress) return null;
   const [blob, thumb] = await Promise.all([apiBlob('progress/photo'), apiBlob('progress/thumb')]);
   return { ...progress, photo: { blob, thumb } };
 }
 
 export async function clearProgress() {
+  await clearRecovery();
   if (user) return api('progress/clear', {});
   return local.clearProgress();
 }

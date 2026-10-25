@@ -17,15 +17,17 @@ Security choices:
 - Everything a player sends during a live game is checked (piece numbers in range, positions
   bounded, groups matching the table) and rate-limited, so a modified app can't flood the
   other player, break the shared table, or crash the server.
-- Times in races and challenges are measured by the server, not reported by the player.
+- Times in races and challenges are measured by the server, not reported by the player, and a
+  win is only accepted once the server has seen the puzzle solved: every join the app reports
+  must connect neighbouring pieces, and the joins must add up to the whole picture, no faster
+  than a person could manage (see join() and finish()). Shared tables check joins the same way.
 - Live updates go only to the two players, over their own signed-in connection.
 """
 
-import contextlib
+import asyncio
 import json
 import math
 import os
-import queue
 import re
 import secrets
 import threading
@@ -53,6 +55,8 @@ CHALLENGE_DAYS = 14     # time to play a challenge
 START_DELAY_MS = 4000   # the 3-2-1 countdown before a live game
 MAX_STREAMS_PER_USER = 5
 EVENTS_PER_SECOND = 40  # per player in a live game (piece moves are sent about 10 times a second)
+MIN_MS_PER_PIECE = 400  # nobody solves faster than this: a quicker "finish" isn't a real one
+MIN_MS_BETWEEN_JOINS = 100
 REPORT_REASONS = {
     "name": "Offensive username",
     "harassment": "Harassment or unkind behaviour",
@@ -134,6 +138,23 @@ CREATE TABLE IF NOT EXISTS match_players (
 """
 
 
+def connected(pieces, cols):
+    """Whether the pieces form one connected patch of the grid (each touches another side by side)."""
+    pieces = set(pieces)
+    if not pieces:
+        return False
+    start = next(iter(pieces))
+    seen, todo = {start}, [start]
+    while todo:
+        p = todo.pop()
+        row, col = divmod(p, cols)
+        for q in ((p - 1) if col > 0 else None, (p + 1) if col < cols - 1 else None, p - cols, p + cols):
+            if q is not None and q in pieces and q not in seen:
+                seen.add(q)
+                todo.append(q)
+    return len(seen) == len(pieces)
+
+
 def now_ms():
     return int(time.time() * 1000)
 
@@ -144,20 +165,46 @@ def pair(a, b):
 
 # ---------- Live updates (server-sent events) ----------
 
+class Stream:
+    """One open connection (a browser tab). Messages are handed to the server's event loop, so a
+    waiting connection costs nothing; they can be pushed from any thread."""
+
+    def __init__(self, loop):
+        self.loop = loop
+        self.queue = asyncio.Queue(maxsize=1000)
+
+    def push(self, message):
+        def put():
+            if self.queue.full():  # a connection that stopped reading: close it, the app reconnects
+                while not self.queue.empty():
+                    self.queue.get_nowait()
+                self.queue.put_nowait(None)
+            else:
+                self.queue.put_nowait(message)
+        try:
+            self.loop.call_soon_threadsafe(put)
+        except RuntimeError:  # the event loop has stopped (the server is shutting down)
+            pass
+
+    async def get(self, timeout):
+        return await asyncio.wait_for(self.queue.get(), timeout)
+
+
 class Hub:
     """Each signed-in tab keeps one connection open; messages for a player go to all their tabs."""
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.streams = {}  # user id -> [queue]
+        self.streams = {}  # user id -> [Stream]
 
     def subscribe(self, user_id):
-        stream = queue.Queue(maxsize=1000)
+        """Called from the event loop. Returns the new stream, and whether it's the player's first."""
+        stream = Stream(asyncio.get_running_loop())
         with self.lock:
             streams = self.streams.setdefault(user_id, [])
             streams.append(stream)
             if len(streams) > MAX_STREAMS_PER_USER:
-                streams.pop(0).put(None)  # the oldest tab's connection closes
+                streams.pop(0).push(None)  # the oldest tab's connection closes
             first = len(streams) == 1
         return stream, first
 
@@ -185,23 +232,14 @@ class Hub:
         with self.lock:
             streams = list(self.streams.get(user_id, []))
         for stream in streams:
-            try:
-                stream.put_nowait(message)
-            except queue.Full:  # a connection that stopped reading: close it, the app reconnects
-                with contextlib.suppress(queue.Empty):
-                    while True:
-                        stream.get_nowait()
-                stream.put_nowait(None)
+            stream.push(message)
 
     def close_user(self, user_id):
         """Ends every open connection of a player (on signing out or deleting the account)."""
         with self.lock:
             streams = self.streams.pop(user_id, [])
         for stream in streams:
-            try:
-                stream.put_nowait(None)
-            except queue.Full:
-                pass
+            stream.push(None)
 
 
 # ---------- The shared table of a live game ----------
@@ -209,8 +247,9 @@ class Hub:
 class LiveGame:
     """In-memory state of a live game: who's at the table, and (playing together) the layout."""
 
-    def __init__(self, match, count):
+    def __init__(self, match, count, cols):
         self.lock = threading.Lock()
+        self.cols = cols
         self.id = match["id"]
         self.mode = match["mode"]
         self.players = (match["host_id"], match["guest_id"])
@@ -315,7 +354,8 @@ class LiveGame:
         anchors = self.groups_touching(pieces)
         held = set(self.held_by(user_id))
         if (anchors is None or not held or not held <= set(pieces)
-                or any(self.locks.get(p, user_id) != user_id for p in pieces)):
+                or any(self.locks.get(p, user_id) != user_id for p in pieces)
+                or (len(anchors) > 1 and not connected(pieces, self.cols))):  # only real neighbours join
             self.release(user_id)
             return {"ok": False, "resync": True}
         for anchor in anchors:
@@ -336,6 +376,8 @@ class Social:
         self.live = {}
         self.live_lock = threading.Lock()
         accounts.database.script(SCHEMA)
+        accounts.database.add_column("match_players", "joins", "TEXT")  # the server's record of each puzzle
+        accounts.database.add_column("match_players", "last_join", "INTEGER")
 
     def connect(self):
         return self.accounts.connect()
@@ -853,6 +895,9 @@ class Social:
             if not started or started > now_ms():
                 raise AccountError("This game hasn't started yet.", 409)
             elapsed = now_ms() - started
+            solved, count = self._solved(db, m, user_id)
+            if not solved or elapsed < count * MIN_MS_PER_PIECE:
+                raise AccountError("The server hasn't seen this puzzle finished yet.", 409)
             db.execute(
                 "UPDATE match_players SET finished_at = ?, time_ms = ?, stars = ?, moves = ?, hints = ?"
                 " WHERE match_id = ? AND user_id = ?",
@@ -866,6 +911,59 @@ class Social:
                 self.hub.send(other, "game", {"match": match_id, "type": "finished", "winner": "friend", "timeMs": elapsed})
                 self.hub.send(other, "matches")
         return {"timeMs": elapsed}
+
+    # ---------- What each player has solved (races and challenges) ----------
+
+    def join(self, user_id, match_id, pieces):
+        """The app reports a group of pieces it just joined. The server keeps its own record of each
+        player's puzzle, so a win can only come from joins that really happened."""
+        with self.connect() as db:
+            m = self._match(db, user_id, match_id)
+            if m["mode"] == "together" or m["status"] != "accepted":
+                raise AccountError("This game isn't open.", 409)
+            puzzle = db.execute("SELECT cols, rows FROM match_puzzles WHERE match_id = ? AND player_id = ?",
+                                (match_id, user_id)).fetchone()
+            count, cols = puzzle["cols"] * puzzle["rows"], puzzle["cols"]
+            player = db.execute("SELECT began_at, finished_at, joins, last_join FROM match_players"
+                                " WHERE match_id = ? AND user_id = ?", (match_id, user_id)).fetchone()
+            started = player["began_at"] if m["mode"] == "challenge" else m["started_at"]
+            if not started or started > now_ms() + 500 or player["finished_at"]:
+                raise AccountError("This game isn't open.", 409)
+            if not isinstance(pieces, list) or not 2 <= len(pieces) <= count or not all(
+                    isinstance(p, int) and not isinstance(p, bool) and 0 <= p < count for p in pieces):
+                raise AccountError("Invalid move.")
+            if not connected(pieces, cols):
+                raise AccountError("Invalid move.")
+            if player["last_join"] and now_ms() - player["last_join"] < MIN_MS_BETWEEN_JOINS:
+                raise AccountError("Too many moves at once.", 429)
+            groups = [set(g) for g in json.loads(player["joins"] or "[]")]
+            joined = set(pieces)
+            for group in [g for g in groups if g & joined]:  # everything it touches becomes one group
+                joined |= group
+                groups.remove(group)
+            groups.append(joined)
+            pieces_in_groups = sum(len(g) for g in groups)
+            share = (pieces_in_groups - len(groups)) / (count - 1)
+            db.execute("UPDATE match_players SET joins = ?, last_join = ? WHERE match_id = ? AND user_id = ?",
+                       (json.dumps([sorted(g) for g in groups]), now_ms(), match_id, user_id))
+        if m["mode"] == "race":  # the friend's progress bar shows what the server saw, not what the app claims
+            with self.live_lock:
+                game = self.live.get(match_id)
+            if game:
+                game.progress[user_id] = round(share, 4)
+            other = m["guest_id"] if user_id == m["host_id"] else m["host_id"]
+            self.hub.send(other, "game", {"match": match_id, "type": "progress", "share": round(share, 4)})
+        return {"ok": True, "share": round(share, 4)}
+
+    def _solved(self, db, m, user_id):
+        """Whether the server's record of this player's puzzle is one whole picture."""
+        puzzle = db.execute("SELECT cols, rows FROM match_puzzles WHERE match_id = ? AND player_id = ?",
+                            (m["id"], user_id)).fetchone()
+        count = puzzle["cols"] * puzzle["rows"]
+        row = db.execute("SELECT joins FROM match_players WHERE match_id = ? AND user_id = ?",
+                         (m["id"], user_id)).fetchone()
+        groups = json.loads(row["joins"] or "[]")
+        return len(groups) == 1 and len(groups[0]) == count, count
 
     def _complete_together(self, game):
         elapsed = now_ms() - game.start_at
@@ -887,7 +985,7 @@ class Social:
             if not game:
                 puzzle = db.execute("SELECT cols, rows FROM match_puzzles WHERE match_id = ? AND player_id = ?",
                                     (match_id, user_id)).fetchone()
-                game = self.live[match_id] = LiveGame(m, puzzle["cols"] * puzzle["rows"])
+                game = self.live[match_id] = LiveGame(m, puzzle["cols"] * puzzle["rows"], puzzle["cols"])
         return game
 
     def ready(self, user_id, match_id, layout):
@@ -928,14 +1026,7 @@ class Social:
                     raise AccountError("Invalid reaction.")
                 out, reply = {"type": "react", "reaction": reaction}, {"ok": True}
             elif game.mode == "race":
-                if kind != "progress":
-                    raise AccountError("Invalid move.")
-                share = body.get("share")
-                if isinstance(share, bool) or not isinstance(share, (int, float)) or not 0 <= share <= 1:
-                    raise AccountError("Invalid move.")
-                game.progress[user_id] = share
-                out = {"type": "progress", "share": share}
-                reply = {"ok": True}
+                raise AccountError("Invalid move.")  # progress comes from join(), checked by the server
             elif kind == "grab":
                 reply = game.grab(user_id, body.get("pieces"))
                 out = {"type": "grab", "pieces": game.held_by(user_id)} if reply["ok"] else None

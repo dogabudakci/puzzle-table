@@ -2,6 +2,8 @@
 
   python3 tools/backup.py                     saves to backups/puzzle-YYYY-MM-DD-HHMM.json.gz
   python3 tools/backup.py --restore FILE      loads a backup into an EMPTY database
+  python3 tools/backup.py --verify FILE       the same, then checks every table came back complete
+  python3 tools/backup.py --out FILE          saves to FILE instead (used by the scheduled backup)
 
 It uses the same database as the app: data/puzzle.db, or the online one (Neon) when
 DATABASE_URL is set, e.g.  DATABASE_URL='postgresql://…' python3 tools/backup.py
@@ -12,6 +14,7 @@ The backups/ folder is readable only by you and is never added to git.
 """
 
 import base64
+import os
 import gzip
 import json
 import re
@@ -36,7 +39,7 @@ NAME_RE = re.compile(r"^[a-z_]+$")
 
 
 def open_database():
-    accounts = Accounts(DB_PATH)
+    accounts = Accounts(os.environ.get("PUZZLE_DB") or DB_PATH)
     # Creating these makes sure every table exists (as it does when the app starts).
     UserData(accounts)
     Recovery(accounts, "http://localhost")
@@ -57,16 +60,18 @@ def decode(value):
     return value
 
 
-def save():
+def save(target=None):
     database = open_database()
     data = {"savedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tables": {}}
     with database.connect() as db:
         for table in TABLES:
             rows = db.execute(f"SELECT * FROM {table}").fetchall()
             data["tables"][table] = [{k: encode(v) for k, v in dict(r).items()} for r in rows]
-    BACKUPS.mkdir(exist_ok=True)
-    BACKUPS.chmod(0o700)
-    target = BACKUPS / time.strftime("puzzle-%Y-%m-%d-%H%M.json.gz")
+    if target is None:
+        BACKUPS.mkdir(exist_ok=True)
+        BACKUPS.chmod(0o700)
+        target = BACKUPS / time.strftime("puzzle-%Y-%m-%d-%H%M.json.gz")
+    target = Path(target)
     target.write_bytes(gzip.compress(json.dumps(data).encode()))
     target.chmod(0o600)
     counts = ", ".join(f"{len(rows)} {name}" for name, rows in data["tables"].items() if rows)
@@ -93,11 +98,31 @@ def restore(path):
                 db.execute(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), COALESCE((SELECT MAX(id) FROM {table}), 1))")
     total = sum(len(rows) for rows in data["tables"].values())
     print(f"Restored {total} rows from {path} (saved {data.get('savedAt')}).")
+    return data, database
+
+
+def verify(path):
+    """Restores into an empty database and checks each table has exactly the rows of the backup."""
+    data, database = restore(path)
+    problems = []
+    with database.connect() as db:
+        for table in TABLES:
+            expected = len(data["tables"].get(table, []))
+            found = db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+            if found != expected:
+                problems.append(f"{table}: {found} rows, expected {expected}")
+    if problems:
+        raise SystemExit("Restore check FAILED: " + "; ".join(problems))
+    print("Restore check passed: every table came back complete.")
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--restore":
         restore(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--verify":
+        verify(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "--out":
+        save(sys.argv[2])
     elif len(sys.argv) == 1:
         save()
     else:

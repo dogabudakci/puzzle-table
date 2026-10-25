@@ -331,6 +331,9 @@
           </button>
           <div class="react-menu" id="react-menu" role="menu" hidden></div>
         </div>
+        <button type="button" class="save-status" id="save-status" data-state="idle" hidden disabled>
+          <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span></span>
+        </button>
         <div class="friend-chip" id="friend-chip" hidden>
           <span class="friend-dot" aria-hidden="true"></span>
           <span class="friend-chip-name" id="friend-chip-name"></span>
@@ -744,6 +747,11 @@
       <label for="set-music-volume">Music volume</label>
       <input type="range" id="set-music-volume" min="0" max="1" step="0.01">
     </div>
+    <div class="setting-row">
+      <span>Can't hear anything?</span>
+      <button type="button" class="btn secondary small" id="set-test-sound">Test sound</button>
+    </div>
+    <p class="sound-test-result" id="sound-test-result" aria-live="polite"></p>
 
     <h3 class="mini-head">Table</h3>
     <div class="settings-tables" id="settings-tables"></div>

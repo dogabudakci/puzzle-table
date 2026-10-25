@@ -21,7 +21,7 @@ const STAT_NAMES = {
   gamesThisWeek: 'Games with friends this week',
   openReports: 'Open reports',
   suspended: 'Suspended',
-  storageMB: 'Storage used (MB of 400)',
+  storageMB: 'Database size (MB of 400)',
 };
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
