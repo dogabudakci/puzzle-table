@@ -5,6 +5,7 @@ import { cutLines, seededRandom } from './cutter.js';
 import { DEFAULT_TABLE, createTablePicker, getTable, tableTextureUrl } from './textures.js';
 import { isSoundOn, setSoundOn, soundVolume, setSoundVolume } from './effects.js';
 import { showGuide, guideSeen, resetGuide } from './guide.js';
+import { startTranslating, LANGUAGES, currentLanguage, setLanguage } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
 import {
   savePuzzle, listPuzzles, deletePuzzle, listAchievements, saveAchievements,
@@ -28,6 +29,9 @@ import { MatchSession, resultLine } from './multiplayer.js';
 import { api, apiBlob } from './api.js';
 
 import { MOODS, loadSettings, saveSettings, playMood, stopMusic, playingMood, setVolume } from './music.js';
+
+// Everything on screen in the player's language, including what's added later.
+startTranslating();
 
 const DEFAULT_PIECES = 144;
 const SHARED_TABLE = { width: 1600, height: 1000 };
@@ -1335,6 +1339,7 @@ function openSettings() {
   $('set-sound-volume').value = soundVolume();
   $('set-music-volume').value = musicSettings.volume;
   $('settings-tables').replaceChildren(createTablePicker(state.table, pickTable));
+  $('set-language').value = currentLanguage();
   settingsDialog.showModal();
 }
 $('settings-btn').addEventListener('click', openSettings);
@@ -1345,6 +1350,8 @@ $('set-sound').addEventListener('change', (e) => {
   setSoundOn(e.target.checked);
   showSound();
 });
+$('set-language').replaceChildren(...Object.entries(LANGUAGES).map(([code, name]) => new Option(name, code)));
+$('set-language').addEventListener('change', (e) => setLanguage(e.target.value));
 $('set-sound-volume').addEventListener('input', (e) => setSoundVolume(Number(e.target.value)));
 $('set-music-volume').addEventListener('input', (e) => {
   volumeInput.value = e.target.value;

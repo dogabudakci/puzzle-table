@@ -177,7 +177,8 @@ export class MatchSession {
 
   // Back after the connection dropped: catch up with what the friend did meanwhile.
   async resync() {
-    if (this.ended || !this.live || !this.game) return;
+    if (this.ended || !this.live || !this.game || this.resyncing) return;
+    this.resyncing = true;
     try {
       const state = await api('match/ready', { id: this.id });
       this.offset = state.now - Date.now();
@@ -187,10 +188,12 @@ export class MatchSession {
         this.game.applyLayout(state.layout, state.held?.[0]?.pieces ?? []);
       }
     } catch (err) {
-      if (/isn't open/.test(err.message)) {
+      if (/isn't open|sign in/i.test(err.message)) { // the game ended, or the sign-in did meanwhile
         this.ended = true;
         this.hooks.onEnded?.();
       }
+    } finally {
+      this.resyncing = false;
     }
   }
 

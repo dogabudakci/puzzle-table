@@ -1,12 +1,16 @@
 """Tiny Chrome DevTools driver: separate browser contexts (cookies) per player."""
-import base64, itertools, json, subprocess, time, urllib.request
+import atexit, base64, itertools, json, socket, subprocess, time, urllib.request
 import websocket
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 
 class Browser:
-    def __init__(self, profile, port=9333):
+    def __init__(self, profile, port=None):
+        # A free port every time, so a browser left over from an earlier run is never reused.
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
         self.proc = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
                                       "--no-first-run", "--window-size=1400,900", "--autoplay-policy=no-user-gesture-required",
                                       "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -17,6 +21,7 @@ class Browser:
             except Exception:
                 time.sleep(0.2)
         self.ws = websocket.create_connection(info["webSocketDebuggerUrl"], timeout=30)
+        atexit.register(self.close)  # also when a test stops early
         self.ids = itertools.count(1)
         self.buffer = []
 
@@ -47,13 +52,15 @@ class Browser:
         p.call("Emulation.setEmulatedMedia", {"features": [{"name": "prefers-reduced-motion", "value": "reduce"}]})  # skips the intro
         p.call("Page.addScriptToEvaluateOnNewDocument", {"source":
             "window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);"
-            "window.cancelAnimationFrame = (id) => clearTimeout(id);"})
+            "window.cancelAnimationFrame = (id) => clearTimeout(id);"
+            "try { localStorage.setItem('puzzle-guide-seen', '1'); } catch {}"})  # the tips card would cover pieces
         p.call("Emulation.setDeviceMetricsOverride", {"width": 1400, "height": 900, "deviceScaleFactor": 1, "mobile": False})
         p.goto(url)
         return p
 
     def close(self):
-        self.proc.terminate()
+        if self.proc.poll() is None:
+            self.proc.terminate()
 
 
 class Page:
@@ -80,6 +87,12 @@ class Page:
             if self.js(f"!!({expr})"):
                 return True
             time.sleep(0.15)
+        try:  # what the page looked like, to tell a test hiccup from a real problem
+            state = self.js("JSON.stringify({game: !document.getElementById('game').hidden, notice: document.getElementById('notice').hidden ? null : document.getElementById('notice-text').textContent, dialogs: [...document.querySelectorAll('dialog[open]')].map(d => d.id), loading: !document.getElementById('loading').hidden, error: document.getElementById('upload-error')?.textContent})")
+            logs = [m["params"].get("args", [{}])[0].get("value") or m["params"].get("exceptionDetails", {}).get("text") for m in self.b.buffer if m.get("sessionId") == self.s and m.get("method") in ("Runtime.consoleAPICalled", "Runtime.exceptionThrown")]
+            print("page state:", state, "| console:", logs[-5:])
+        except Exception:
+            pass
         raise SystemExit(f"FAIL: timed out waiting for {what or expr}")
 
     def mouse(self, kind, x, y):

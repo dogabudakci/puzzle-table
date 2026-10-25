@@ -82,6 +82,8 @@ with sync_playwright() as pw:
         route.fulfill(response=response, headers=headers)
     for ctx in (desk, phone):
         ctx.route(lambda url: "/api/" not in url and (url.endswith("/") or url.endswith(".html")), no_csp)
+    for ctx in (desk, phone):  # the first-time tips card would cover pieces
+        ctx.add_init_script("try { localStorage.setItem('puzzle-guide-seen', '1'); } catch {}")
     ann, ben = desk.new_page(), phone.new_page()
     watch(ann, "desktop")
     watch(ben, "iphone")

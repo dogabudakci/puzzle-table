@@ -91,7 +91,13 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
       // The browser retries by itself, unless the server refused (e.g. signed out elsewhere).
       if (events?.readyState === EventSource.CLOSED) {
         clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connect, 10000);
+        // Refused: maybe the sign-in ended (signed out elsewhere, or expired). Then say so here too.
+        reconnectTimer = setTimeout(() => {
+          api('me').then(({ user: current }) => {
+            if (!current) onUserChange?.(null);
+            else connect();
+          }, () => { reconnectTimer = setTimeout(connect, 10000); });
+        }, 3000);
       }
     };
   }
