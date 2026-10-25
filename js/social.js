@@ -10,12 +10,15 @@ import { loadImageFile } from './imageLoader.js';
 import { gridFor } from './pieceOptions.js';
 import { formatTime } from './timer.js';
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const VIEWS = ['name', 'main', 'new', 'pick', 'report'];
 const UPLOAD_SIDE = 1400; // photos sent to a friend: sharp on screen, about 250 KB
 
-export const MODE_NAMES = { together: 'Together', race: 'Race', challenge: 'Challenge' };
+export const MODE_NAMES = { together: t('friends.together2'), race: t('friends.race'), challenge: t('friends.challenge') };
+// The same names inside a sentence (lower case, except where the language says otherwise).
+const MODE_IN_TEXT = { together: 'friends.together3', race: 'friends.race2', challenge: 'friends.challenge2' };
 
 // onPlay(matchId): open a game's table. onGameEvent(data): a move or message in a live game.
 // onUserChange(user): the signed-in player's details changed (e.g. a new username).
@@ -173,7 +176,7 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     avatar.textContent = person.username.slice(0, 1).toUpperCase();
     if (person.online !== undefined) {
       avatar.classList.toggle('online', person.online);
-      avatar.title = person.online ? 'Online now' : 'Offline';
+      avatar.title = person.online ? t('friends.onlineNow') : t('friends.offline');
     }
     const name = document.createElement('span');
     name.className = 'person-name';
@@ -216,10 +219,10 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     if (friends.incoming.length) {
       const head = document.createElement('h3');
       head.className = 'mini-head';
-      head.textContent = 'Friend requests';
+      head.textContent = t('friends.friendRequests');
       requests.append(head, ...friends.incoming.map((p) => personRow(p,
-        actionButton('Accept', 'primary small', async () => { await api('friends/respond', { id: p.id, accept: true }); await refreshFriends(); }),
-        actionButton('Decline', 'ghost small', async () => { await api('friends/respond', { id: p.id, accept: false }); await refreshFriends(); }),
+        actionButton(t('friends.accept'), 'primary small', async () => { await api('friends/respond', { id: p.id, accept: true }); await refreshFriends(); }),
+        actionButton(t('friends.decline'), 'ghost small', async () => { await api('friends/respond', { id: p.id, accept: false }); await refreshFriends(); }),
         moreMenu(p, ['block', 'report']),
       )));
     }
@@ -229,24 +232,24 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     if (friends.friends.length) {
       const head = document.createElement('h3');
       head.className = 'mini-head';
-      head.textContent = 'Your friends';
+      head.textContent = t('friends.friends');
       list.append(head, ...friends.friends.map((p) => personRow(p,
-        actionButton('Play', 'primary small', () => startNewGame(p)),
+        actionButton(t('friends.play'), 'primary small', () => startNewGame(p)),
         moreMenu(p, ['remove', 'block', 'report']),
       )));
     }
     if (friends.outgoing.length) {
       const head = document.createElement('h3');
       head.className = 'mini-head';
-      head.textContent = 'Waiting for an answer';
-      list.append(head, ...friends.outgoing.map((p) => personRow(p, removeButton(p, null, 'Cancel'))));
+      head.textContent = t('friends.waitingAnswer');
+      list.append(head, ...friends.outgoing.map((p) => personRow(p, removeButton(p, null, t('friends.cancel')))));
     }
     if (friends.blocked?.length) {
       const head = document.createElement('h3');
       head.className = 'mini-head';
-      head.textContent = 'Blocked';
+      head.textContent = t('friends.blocked');
       list.append(head, ...friends.blocked.map((p) => personRow(p,
-        actionButton('Unblock', 'ghost small', async () => { await api('friends/unblock', { id: p.id }); await refreshFriends(); }),
+        actionButton(t('friends.unblock'), 'ghost small', async () => { await api('friends/unblock', { id: p.id }); await refreshFriends(); }),
       )));
     }
     $('friends-empty').hidden = friends.friends.length + friends.incoming.length + friends.outgoing.length > 0;
@@ -257,9 +260,9 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     if (!record) return '';
     const parts = [];
     if (record.wins || record.losses || record.draws) {
-      parts.push(`You ${record.wins} – ${record.losses}` + (record.draws ? ` (${record.draws} drawn)` : ''));
+      parts.push(t('friends.text', { a: record.wins, b: record.losses }) + (record.draws ? t('friends.drawn', { a: record.draws }) : ''));
     }
-    if (record.together) parts.push(`${record.together} together`);
+    if (record.together) parts.push(t('friends.together', { a: record.together }));
     return parts.join(' · ');
   }
 
@@ -270,16 +273,16 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'icon-btn more-btn';
-    toggle.setAttribute('aria-label', `More for ${person.username}`);
+    toggle.setAttribute('aria-label', t('friends.more', { a: person.username }));
     toggle.setAttribute('aria-expanded', 'false');
     toggle.append(icon('i-more'));
     const menu = document.createElement('div');
     menu.className = 'more-menu';
     menu.hidden = true;
     const labels = {
-      remove: ['Remove friend', `Remove ${person.username}? Open games with them end too.`],
-      block: ['Block', `Block ${person.username}? You won't be friends any more and they can't send you requests.`],
-      report: ['Report…', null],
+      remove: [t('friends.removeFriend'), t('friends.removeOpenGamesThem', { a: person.username })],
+      block: [t('friends.block'), t('friends.blockWonFriendsAny', { a: person.username })],
+      report: [t('friends.report'), null],
     };
     for (const item of items) {
       const [label, question] = labels[item];
@@ -294,7 +297,7 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
         }
         if (!b.classList.contains('confirm')) { // asks once, so a slip doesn't lose a friend
           b.classList.add('confirm');
-          b.textContent = 'Tap again to confirm';
+          b.textContent = t('friends.tapAgainConfirm');
           b.title = question;
           return;
         }
@@ -302,7 +305,7 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
         try {
           await api(item === 'remove' ? 'friends/remove' : 'friends/block', { id: person.id });
           await refresh();
-          if (item === 'block') flash(`${person.username} is blocked.`);
+          if (item === 'block') flash(t('friends.blocked2', { a: person.username }));
         } catch (err) {
           flash(err.message);
         }
@@ -347,7 +350,7 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
   $('report-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const reason = new FormData(e.currentTarget).get('reason');
-    if (!reason) return showError($('report-error'), "Please choose what's wrong.");
+    if (!reason) return showError($('report-error'), t('report.chooseReason'));
     const submit = e.currentTarget.querySelector('button[type="submit"]');
     submit.disabled = true;
     try {
@@ -365,11 +368,11 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
   $('report-ok').addEventListener('click', () => { view('main'); showTab('friends'); });
 
   // Asks once before removing (the button turns into "Sure?"), so a slip doesn't lose a friend.
-  function removeButton(person, question, label = 'Remove') {
+  function removeButton(person, question, label = t('gallery.remove')) {
     const b = actionButton(label, 'ghost small', async () => {
       if (question && !b.classList.contains('confirm')) {
         b.classList.add('confirm');
-        b.textContent = 'Sure?';
+        b.textContent = t('friends.sure');
         b.title = question;
         setTimeout(() => { b.classList.remove('confirm'); b.textContent = label; }, 3000);
         return;
@@ -389,8 +392,8 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     try {
       const { result } = await api('friends/request', { username: input.value });
       done.textContent = result === 'accepted'
-        ? `You and ${input.value.trim()} are friends now.`
-        : `Request sent. Once ${input.value.trim()} accepts, you can play together.`;
+        ? t('friends.areFriendsNow', { a: input.value.trim() })
+        : t('friends.requestSentOnceAccepts', { a: input.value.trim() });
       done.hidden = false;
       input.value = '';
       refreshFriends();
@@ -419,24 +422,22 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     const mine = m.me?.timeMs;
     const theirs = m.them?.timeMs;
     if (m.status === 'invited') {
-      return m.role === 'guest' ? `${name} invited you` : `Waiting for ${name} to answer`;
+      return m.role === 'guest' ? t('friends.invited', { a: name }) : t('friends.waitingAnswer2', { a: name });
     }
-    if (m.status === 'declined') return `${name} said no this time`;
-    if (m.status === 'cancelled') return 'Cancelled';
+    if (m.status === 'declined') return t('friends.saidNoTime', { a: name });
+    if (m.status === 'cancelled') return t('friends.cancelled');
     if (m.status === 'finished') {
-      if (m.mode === 'together') return mine ? `Finished together in ${formatTime(mine)}` : 'Finished together';
-      const times = mine && theirs ? ` · ${formatTime(mine)} vs ${formatTime(theirs)}` : '';
-      if (m.winner === 'me') return `You won${times}`;
-      if (m.winner === 'friend') return `${name} won${times}`;
-      return `A draw${times}`;
+      if (m.mode === 'together') return mine ? t('friends.finishedTogether', { a: formatTime(mine) }) : t('friends.finishedTogether2');
+      const outcome = m.winner === 'me' ? t('friends.won') : m.winner === 'friend' ? t('friends.won2', { a: name }) : t('friends.draw');
+      return mine && theirs ? `${outcome} · ${t('friends.vs', { a: formatTime(mine), b: formatTime(theirs) })}` : outcome;
     }
     // accepted
     if (m.mode === 'challenge') {
-      if (m.me?.finished) return `Your time: ${formatTime(mine)}. Waiting for ${name} to play`;
-      if (m.me?.started) return 'You started: the clock is running';
-      return m.them?.finished ? `${name} has played. Your turn!` : 'Your turn: play whenever you like';
+      if (m.me?.finished) return t('friends.timeWaitingPlay', { a: formatTime(mine), b: name });
+      if (m.me?.started) return t('friends.startedClockRunning');
+      return m.them?.finished ? t('friends.hasPlayedTurn', { a: name }) : t('friends.turnPlayWheneverLike');
     }
-    return m.startedAt ? 'In progress' : `Ready: join the table with ${name}`;
+    return m.startedAt ? t('friends.progress') : t('friends.readyJoinTable', { a: name });
   }
 
   function matchRow(m) {
@@ -449,27 +450,27 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     const text = document.createElement('span');
     text.className = 'game-text';
     const title = document.createElement('strong');
-    title.textContent = `${MODE_NAMES[m.mode]} with ${m.friend.username}`;
+    title.textContent = t(`friends.${m.mode}With`, { a: m.friend.username });
     const detail = document.createElement('span');
-    detail.textContent = `${describe(m)} · ${m.pieces} pieces${m.picks === 'swap' ? ' · picked for each other' : ''}`;
+    detail.textContent = `${describe(m)} · ${t('start.pieces2', { a: m.pieces })}${m.picks === 'swap' ? ` · ${t('friends.pickedEachOther')}` : ''}`;
     text.append(title, detail);
     const actions = document.createElement('span');
     actions.className = 'person-actions';
 
     if (m.status === 'invited' && m.role === 'guest') {
       actions.append(
-        actionButton(m.picks === 'swap' ? 'Pick & accept' : 'Accept', 'primary small', () => acceptInvite(m)),
-        actionButton('Decline', 'ghost small', async () => { await api('match/respond', { id: m.id, accept: false }); await refreshMatches(); }),
+        actionButton(m.picks === 'swap' ? t('friends.pickAccept') : t('friends.accept'), 'primary small', () => acceptInvite(m)),
+        actionButton(t('friends.decline'), 'ghost small', async () => { await api('match/respond', { id: m.id, accept: false }); await refreshMatches(); }),
       );
     } else if (m.status === 'invited') {
-      actions.append(actionButton('Cancel', 'ghost small', () => leave(m)));
+      actions.append(actionButton(t('friends.cancel'), 'ghost small', () => leave(m)));
     } else if (m.status === 'accepted') {
       const played = m.me?.finished || m.me?.gaveUp;
       if (!played) {
-        const label = m.mode === 'challenge' ? (m.me?.started ? 'Continue' : 'Play') : 'Join table';
+        const label = m.mode === 'challenge' ? (m.me?.started ? t('start.continue') : t('friends.play')) : t('friends.joinTable');
         actions.append(actionButton(label, 'primary small', () => play(m.id)));
       }
-      if (!played) actions.append(actionButton(m.mode === 'together' ? 'Leave' : 'Give up', 'ghost small', () => leave(m)));
+      if (!played) actions.append(actionButton(m.mode === 'together' ? t('friends.leave') : t('friends.giveUp'), 'ghost small', () => leave(m)));
     }
     row.append(badge, text, actions);
     return row;
@@ -485,8 +486,8 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     const open = matches.filter((m) => m.status === 'invited' || m.status === 'accepted');
     const past = matches.filter((m) => !open.includes(m));
     list.replaceChildren();
-    if (open.length) list.append(heading('Open games'), ...open.map(matchRow));
-    if (past.length) list.append(heading('Earlier'), ...past.slice(0, 15).map(matchRow));
+    if (open.length) list.append(heading(t('friends.openGames')), ...open.map(matchRow));
+    if (past.length) list.append(heading(t('friends.earlier')), ...past.slice(0, 15).map(matchRow));
     $('games-empty').hidden = matches.length > 0;
   }
 
@@ -507,7 +508,7 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     if (m.picks === 'swap') {
       picking = m;
       $('pick-friend').textContent = m.friend.username;
-      $('pick-sub').textContent = `${m.friend.username} picked a puzzle for you. Now pick one for them: ${m.pieces} pieces.`;
+      $('pick-sub').textContent = t('friends.pickedPuzzleNowPick', { a: m.friend.username, b: m.pieces });
       showError($('pick-error'), '');
       pickPicker.reset();
       view('pick');
@@ -545,9 +546,9 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
       b.setAttribute('aria-pressed', String(b.dataset.picks === newGame.picks));
     }
     const swap = !together && newGame.picks === 'swap';
-    $('photo-head').textContent = swap ? `Photo for ${newGame.friend.username}` : 'Photo for both of you';
-    $('photo-note').textContent = swap ? `${newGame.friend.username} picks yours when they accept.` : '';
-    $('send-invite').textContent = newGame.mode === 'challenge' ? 'Send challenge' : 'Send invite';
+    $('photo-head').textContent = swap ? t('friends.photo', { a: newGame.friend.username }) : t('friends.photoBoth');
+    $('photo-note').textContent = swap ? t('friends.picksYoursWhenThey', { a: newGame.friend.username }) : '';
+    $('send-invite').textContent = newGame.mode === 'challenge' ? t('friends.sendChallenge') : t('friends.sendInvite');
   }
 
   $('mode-picker').addEventListener('click', (e) => {
@@ -616,17 +617,18 @@ export function initSocial({ onPlay, onGameEvent, onUserChange, onConnection }) 
     if (!m) return;
     const name = m.friend.username;
     if (data.invite) {
-      notice(`${name} invited you: ${MODE_NAMES[m.mode].toLowerCase()}, ${m.pieces} pieces`, 'Open', () => open('games'));
+      notice(t('friends.invitedPieces', { a: name, b: t(MODE_IN_TEXT[m.mode]), c: m.pieces }), t('friends.open'), () => open('games'));
     } else if (data.accepted && m.mode !== 'challenge') {
       // Invited from here and not busy with another game: straight to the table.
       if (awaiting.delete(m.id) && !playingMatch?.()) play(m.id);
-      else notice(`${name} is at the table`, 'Join', () => play(m.id), { keep: true });
+      else notice(t('friends.table', { a: name }), t('friends.join'), () => play(m.id), { keep: true });
     } else if (data.accepted) {
-      notice(`${name} accepted your challenge`, 'Play', () => play(m.id));
+      notice(t('friends.acceptedChallenge', { a: name }), t('friends.play'), () => play(m.id));
     } else if (data.declined) {
-      notice(`${name} can't play right now`);
+      notice(t('friends.playRightNow', { a: name }));
     } else if (data.finished && m.mode === 'challenge') {
-      notice(describe(m).replace(/^You won/, 'You won the challenge').replace(/ won /, ' won the challenge '), 'See', () => open('games'));
+      const outcome = m.winner === 'me' ? t('friends.wonChallenge') : m.winner === 'friend' ? t('friends.wonChallenge2', { a: name }) : t('friends.draw');
+      notice(outcome, t('friends.see'), () => open('games'));
     }
   }
 
@@ -714,7 +716,7 @@ function createPhotoPicker(container) {
   const upload = document.createElement('button');
   upload.type = 'button';
   upload.className = 'btn secondary small';
-  upload.append(icon('i-upload'), 'Use your own photo');
+  upload.append(icon('i-upload'), t('friends.useOwnPhoto'));
   upload.addEventListener('click', () => input.click());
   input.addEventListener('change', async () => {
     const file = input.files[0];
@@ -732,7 +734,7 @@ function createPhotoPicker(container) {
   });
 
   function show() {
-    status.textContent = choice ? `Picked: ${choice.name}` : 'Pick a photo from the library, or use your own.';
+    status.textContent = choice ? t('friends.picked', { a: choice.name }) : t('friends.pickPhotoFromLibrary');
     status.classList.toggle('picked', Boolean(choice));
   }
 
@@ -753,7 +755,7 @@ function createPhotoPicker(container) {
       show();
     },
     async puzzle(pieces) {
-      if (!choice) throw new Error('Please pick a photo first.');
+      if (!choice) throw new Error(t('friends.pleasePickPhotoFirst'));
       const { cols, rows } = gridFor(pieces, choice.width / choice.height);
       if (choice.libraryId) return { libraryId: choice.libraryId, name: choice.name, cols, rows };
       return { image: await blobToBase64(await shrink(choice.canvas)), name: choice.name, cols, rows };

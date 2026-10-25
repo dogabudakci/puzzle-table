@@ -50,11 +50,14 @@ MAX_SIGNUPS_PER_ADDRESS = 10
 
 
 class AccountError(Exception):
-    """A problem to show to the player, with an HTTP status."""
+    """A problem to show to the player, with an HTTP status. `code` names the message for good
+    (the app translates by it, see js/messages.js), and `values` fills in its blanks ({a}, {b})."""
 
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, code=None, values=None):
         super().__init__(message)
         self.status = status
+        self.code = code
+        self.values = values or {}
 
 
 def b64(data):
@@ -151,29 +154,29 @@ class Accounts:
         value = (identifier or "").strip().lower()
         if "@" in value:
             if len(value) > 254 or not EMAIL_RE.match(value):
-                raise AccountError("Please enter a valid email address.")
+                raise AccountError("Please enter a valid email address.", code="invalidEmail")
             return "email", value
         if not USERNAME_RE.match(value):
-            raise AccountError("Usernames are 3–24 characters: letters, numbers, dots, dashes or underscores.")
+            raise AccountError("Usernames are 3–24 characters: letters, numbers, dots, dashes or underscores.", code="usernameRules")
         return "username", value
 
     @staticmethod
     def check_new_password(password, identifier):
         if not isinstance(password, str) or len(password) < MIN_PASSWORD:
-            raise AccountError(f"Please use at least {MIN_PASSWORD} characters for your password.")
+            raise AccountError(f"Please use at least {MIN_PASSWORD} characters for your password.", code="passwordTooShort", values={"a": MIN_PASSWORD})
         if len(password) > MAX_PASSWORD:
-            raise AccountError(f"Passwords can be at most {MAX_PASSWORD} characters.")
+            raise AccountError(f"Passwords can be at most {MAX_PASSWORD} characters.", code="passwordTooLong", values={"a": MAX_PASSWORD})
         lowered = password.lower()
         if lowered in COMMON_PASSWORDS or len(set(password)) < 4:
-            raise AccountError("That password is too easy to guess. Try a short phrase of a few words.")
+            raise AccountError("That password is too easy to guess. Try a short phrase of a few words.", code="passwordTooEasy")
         if identifier.split("@")[0] in lowered:
-            raise AccountError("Your password shouldn't contain your username or email.")
+            raise AccountError("Your password shouldn't contain your username or email.", code="passwordContainsName")
 
     # ---------- Sign up, sign in, sessions ----------
 
     def sign_up(self, identifier, password, address):
         if self.limits.count(f"signup:{address}") >= MAX_SIGNUPS_PER_ADDRESS:
-            raise AccountError("Too many new accounts from here. Please try again later.", 429)
+            raise AccountError("Too many new accounts from here. Please try again later.", 429, code="tooManySignups")
         kind, value = self.parse_identifier(identifier)
         self.check_new_password(password, value)
         self.limits.add(f"signup:{address}")
@@ -185,7 +188,7 @@ class Accounts:
                     (value, stored, int(time.time())),
                 ).fetchone()["id"]
         except self.database.IntegrityError:
-            raise AccountError("That name is already taken. Try signing in instead.", 409)
+            raise AccountError("That name is already taken. Try signing in instead.", 409, code="nameTaken")
         return self.new_session(user_id), self.user(user_id)
 
     def sign_in(self, identifier, password, address):
@@ -195,17 +198,17 @@ class Accounts:
             kind, value = "username", ""
         if (self.limits.count(f"fail:{value}") >= MAX_FAILS_PER_ACCOUNT
                 or self.limits.count(f"fail-ip:{address}") >= MAX_FAILS_PER_ADDRESS):
-            raise AccountError("Too many attempts. Please wait 15 minutes and try again.", 429)
+            raise AccountError("Too many attempts. Please wait 15 minutes and try again.", 429, code="tooManyAttempts")
 
         with self.connect() as db:
             row = db.execute(f"SELECT id, password_hash, suspended FROM users WHERE {kind} = ?", (value,)).fetchone() if value else None
         ok = check_password(password or "", row["password_hash"] if row else DUMMY_HASH) and row is not None
         if ok and row["suspended"]:  # only said to someone who knows the password
-            raise AccountError("This account has been suspended. If you think that's a mistake, please contact us.", 403)
+            raise AccountError("This account has been suspended. If you think that's a mistake, please contact us.", 403, code="accountSuspended")
         if not ok:
             self.limits.add(f"fail:{value}")
             self.limits.add(f"fail-ip:{address}")
-            raise AccountError("That email/username and password don't match.", 401)
+            raise AccountError("That email/username and password don't match.", 401, code="wrongSignIn")
 
         self.limits.clear(f"fail:{value}")
         if needs_rehash(row["password_hash"]):
@@ -244,7 +247,7 @@ class Accounts:
         with self.connect() as db:
             row = db.execute("SELECT username, email, password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
         if not row or not check_password(current or "", row["password_hash"]):
-            raise AccountError("Your current password isn't right.", 401)
+            raise AccountError("Your current password isn't right.", 401, code="wrongCurrentPassword")
         self.check_new_password(new, row["email"] or row["username"])
         with self.connect() as db:
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new), user_id))
@@ -255,7 +258,7 @@ class Accounts:
         with self.connect() as db:
             row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
             if not row or not check_password(password or "", row["password_hash"]):
-                raise AccountError("That password isn't right.", 401)
+                raise AccountError("That password isn't right.", 401, code="wrongPassword")
             db.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
     def user(self, user_id):

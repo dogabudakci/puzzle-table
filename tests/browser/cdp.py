@@ -39,7 +39,8 @@ class Browser:
                 return data.get("result", {})
             self.buffer.append(data)
 
-    def page(self, url):
+    def page(self, url, init=""):
+        # `init`: more script to run before the page's own (e.g. to pick a language).
         ctx = self.call("Target.createBrowserContext")["browserContextId"]
         target = self.call("Target.createTarget", {"url": "about:blank", "browserContextId": ctx})["targetId"]
         session = self.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
@@ -53,7 +54,7 @@ class Browser:
         p.call("Page.addScriptToEvaluateOnNewDocument", {"source":
             "window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);"
             "window.cancelAnimationFrame = (id) => clearTimeout(id);"
-            "try { localStorage.setItem('puzzle-guide-seen', '1'); } catch {}"})  # the tips card would cover pieces
+            "try { localStorage.setItem('puzzle-guide-seen', '1'); } catch {}" + init})  # the tips card would cover pieces
         p.call("Emulation.setDeviceMetricsOverride", {"width": 1400, "height": 900, "deviceScaleFactor": 1, "mobile": False})
         p.goto(url)
         return p

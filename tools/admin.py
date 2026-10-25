@@ -39,7 +39,7 @@ class Admin:
 
     def require(self, user):
         if not self.is_admin(user):
-            raise AccountError("Not found.", 404)
+            raise AccountError("Not found.", 404, code="notFound")
 
     def reports(self, user):
         self.require(user)
@@ -63,16 +63,16 @@ class Admin:
         """Closes a report, and optionally suspends, restores or deletes the reported account."""
         self.require(user)
         if not isinstance(report_id, int) or action not in ACTIONS:
-            raise AccountError("Invalid request.")
+            raise AccountError("Invalid request.", code="invalidRequest")
         with self.connect() as db:
             report = db.execute("SELECT reported FROM reports WHERE id = ?", (report_id,)).fetchone()
             if not report:
-                raise AccountError("That report doesn't exist.", 404)
+                raise AccountError("That report doesn't exist.", 404, code="reportNotFound")
             player = report["reported"]
             if action != "dismiss" and player is None:
-                raise AccountError("That account no longer exists.", 409)
+                raise AccountError("That account no longer exists.", 409, code="accountGone")
             if player == user["id"]:
-                raise AccountError("That's your own account.")
+                raise AccountError("That's your own account.", code="ownAccount")
             if action == "suspend":
                 db.execute("UPDATE users SET suspended = 1 WHERE id = ?", (player,))
                 db.execute("DELETE FROM sessions WHERE user_id = ?", (player,))

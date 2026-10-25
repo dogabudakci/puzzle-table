@@ -5,6 +5,7 @@
 // fragment, which is never sent to servers; it's read once and removed from the address bar.
 
 import { api } from './api.js';
+import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const VIEWS = ['guest', 'forgot', 'reset', 'message', 'member'];
@@ -42,9 +43,9 @@ export function initAccount({ onChange } = {}) {
   function showUser(next) {
     const changed = (next?.id ?? null) !== (user?.id ?? null);
     user = next;
-    button.textContent = user ? nameOf(user) : 'Sign in';
+    button.textContent = user ? nameOf(user) : t('start.sign');
     button.classList.toggle('signed-in', Boolean(user));
-    button.title = user ? 'Your account' : 'Sign in or create an account';
+    button.title = user ? t('account.account') : t('account.signCreateAccount');
     if (user) {
       $('account-name').textContent = nameOf(user);
       showEmailStatus();
@@ -62,21 +63,21 @@ export function initAccount({ onChange } = {}) {
     const waiting = user.pending_email || (user.email && !user.email_verified ? user.email : null);
     status.classList.toggle('warn', !user.email_verified);
     if (waiting) {
-      status.textContent = `Check ${waiting} for a link to confirm it. Until then, a forgotten password can't be reset.`;
+      status.textContent = t('account.checkLinkConfirmUntil2', { a: waiting });
     } else if (user.email) {
-      status.textContent = `Email ${user.email} is confirmed, so you can reset your password if you forget it.`;
+      status.textContent = t('account.emailConfirmedResetPassword', { a: user.email });
     } else {
-      status.textContent = 'Add an email so you can reset your password if you ever forget it.';
+      status.textContent = t('account.addEmailResetPassword');
     }
     $('resend-btn').hidden = !waiting;
-    $('email-summary').textContent = user.email ? 'Change email' : 'Add an email for password recovery';
+    $('email-summary').textContent = user.email ? t('account.changeEmail') : t('account.addEmailPasswordRecovery');
   }
 
   function setMode(next) {
     mode = next;
     $('tab-login').setAttribute('aria-selected', String(mode === 'login'));
     $('tab-signup').setAttribute('aria-selected', String(mode === 'signup'));
-    $('account-submit').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+    $('account-submit').textContent = mode === 'login' ? t('start.sign') : t('account.createAccount');
     password.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
     $('account-hint').hidden = mode === 'login';
     $('forgot-btn').hidden = mode !== 'login';
@@ -112,7 +113,7 @@ export function initAccount({ onChange } = {}) {
       password.value = '';
       showUser(next);
       if (signingUp && next.email) {
-        message('Welcome!', `We've sent a link to ${next.email}. Confirm it so you can reset your password if you ever forget it.`);
+        message(t('account.welcome2'), t('account.weSentLinkConfirm', { a: next.email }));
       } else {
         dialog.close();
       }
@@ -134,7 +135,7 @@ export function initAccount({ onChange } = {}) {
     submit(e.currentTarget, $('forgot-error'), async () => {
       await api('reset/request', { email: $('forgot-email').value });
       // The same answer whether or not the account exists.
-      $('forgot-done').textContent = 'If that email belongs to an account and is confirmed, a reset link is on its way. It works for 30 minutes.';
+      $('forgot-done').textContent = t('account.emailBelongsAccountConfirmed');
       $('forgot-done').hidden = false;
     });
   });
@@ -146,7 +147,7 @@ export function initAccount({ onChange } = {}) {
       resetToken = null;
       e.target.reset();
       showUser(next);
-      message('Password changed', "You're signed in with your new password. Every other device has been signed out.");
+      message(t('account.passwordChanged'), t('account.signedNewPasswordEvery'));
     });
   });
 
@@ -168,11 +169,11 @@ export function initAccount({ onChange } = {}) {
     resend.disabled = true;
     try {
       await api('email/resend', {});
-      resend.textContent = 'Sent. Check your inbox';
+      resend.textContent = t('account.sentCheckInbox');
     } catch (err) {
       resend.textContent = err.message;
     }
-    setTimeout(() => { resend.disabled = false; resend.textContent = 'Resend confirmation email'; }, 4000);
+    setTimeout(() => { resend.disabled = false; resend.textContent = t('account.resendConfirmationEmail'); }, 4000);
   });
 
   $('password-form').addEventListener('submit', (e) => {
@@ -182,7 +183,7 @@ export function initAccount({ onChange } = {}) {
       await api('password', { current: $('pw-current').value, password: $('pw-new').value });
       formEl.reset();
       formEl.closest('details').open = false;
-      button.textContent = `${nameOf(user)} · password changed`;
+      button.textContent = t('account.passwordChanged2', { a: nameOf(user) });
       setTimeout(() => showUser(user), 2500);
     });
   });
@@ -232,9 +233,9 @@ export function initAccount({ onChange } = {}) {
       const { user: confirmed } = await api('email/confirm', { token });
       if (confirmed) showUser(confirmed);
       else if (me) showUser((await api('me')).user);
-      message('Email confirmed', 'You can now reset your password with this email if you ever forget it.');
+      message(t('account.emailConfirmed'), t('account.nowResetPasswordEmail'));
     } catch (err) {
-      message("That link didn't work", err.message);
+      message(t('account.linkDidnWork'), err.message);
     }
   }
 

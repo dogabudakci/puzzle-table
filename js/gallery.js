@@ -4,6 +4,7 @@ import { ACHIEVEMENTS } from './achievements.js';
 import { formatTime } from './timer.js';
 import { getTable } from './textures.js';
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 
 const imageUrls = new Set();
 
@@ -58,10 +59,10 @@ export function renderGallery({ puzzles, earned, shelf, frames, emptyNote, stats
   shelf.replaceChildren(...ACHIEVEMENTS.map((a) => {
     const has = earned.has(a.id);
     const medal = el('div', `medal${has ? '' : ' locked'}`);
-    medal.title = has ? `${a.hint} · earned ${dateFormat.format(earned.get(a.id))}` : a.hint;
+    medal.title = has ? `${a.hint} · ${t('gallery.earned2', { a: dateFormat.format(earned.get(a.id)) })}` : a.hint;
     const coin = el('div', 'coin');
     coin.append(icon(has ? a.icon : 'i-lock', 'coin-icon'));
-    medal.append(coin, el('div', 'medal-name', a.name), el('div', 'medal-hint', has ? 'Earned' : a.hint));
+    medal.append(coin, el('div', 'medal-name', a.name), el('div', 'medal-hint', has ? t('gallery.earned') : a.hint));
     return medal;
   }));
 
@@ -69,10 +70,10 @@ export function renderGallery({ puzzles, earned, shelf, frames, emptyNote, stats
   frames.replaceChildren(...newestFirst.map((puzzle) => {
     const hung = el('button', 'hung');
     hung.type = 'button';
-    hung.setAttribute('aria-label', `${puzzle.name}, ${puzzle.pieces} pieces. Open`);
+    hung.setAttribute('aria-label', t('gallery.piecesOpen', { a: puzzle.name, b: puzzle.pieces }));
     const plaque = el('div', 'plaque');
     plaque.append(
-      el('strong', '', `${puzzle.pieces} pieces · ${formatTime(puzzle.timeMs)}`),
+      el('strong', '', `${t('start.pieces2', { a: puzzle.pieces })} · ${formatTime(puzzle.timeMs)}`),
       el('span', '', dateFormat.format(puzzle.createdAt)),
     );
     hung.append(createFrame(puzzle), plaque);
@@ -91,7 +92,7 @@ export function renderGallery({ puzzles, earned, shelf, frames, emptyNote, stats
   stats.replaceChildren(
     stat(String(puzzles.length), puzzles.length === 1 ? 'puzzle' : 'puzzles'),
     stat(String(totalPieces), 'pieces'),
-    stat(formatTime(totalTime), 'total time'),
+    stat(formatTime(totalTime), t('gallery.totalTime')),
     stat(`${earned.size}/${ACHIEVEMENTS.length}`, 'achievements'),
   );
 }
@@ -100,17 +101,17 @@ export function renderGallery({ puzzles, earned, shelf, frames, emptyNote, stats
 export function renderViewer(container, puzzle) {
   const details = el('dl', 'viewer-details');
   const add = (label, value) => details.append(el('dt', '', label), el('dd', '', value));
-  add('Pieces', `${puzzle.pieces} (${puzzle.cols} × ${puzzle.rows})`);
-  add('Time', formatTime(puzzle.timeMs));
+  add(t('start.pieces'), `${puzzle.pieces} (${puzzle.cols} × ${puzzle.rows})`);
+  add(t('play.time'), formatTime(puzzle.timeMs));
   if (puzzle.limitMs) {
-    add('Countdown', `${Math.round(puzzle.limitMs / 60000)} min · ${puzzle.beatClock ? 'beat the clock ✓' : 'finished after time ran out'}`);
+    add(t('start.countdown'), `${t('start.min', { a: Math.round(puzzle.limitMs / 60000) })} · ${puzzle.beatClock ? t('gallery.beatClock') : t('gallery.finishedAfterTimeRan')}`);
   }
   // Puzzles saved before hints existed have no count.
   if (puzzle.hintsUsed !== undefined) {
-    add('Hints', puzzle.hintsUsed === 0 ? 'None, solved unaided' : String(puzzle.hintsUsed));
+    add(t('play.hints'), puzzle.hintsUsed === 0 ? t('gallery.noneSolvedUnaided') : String(puzzle.hintsUsed));
   }
-  add('Table', getTable(puzzle.table).name);
-  add('Finished', dateFormat.format(puzzle.createdAt));
+  add(t('start.table'), getTable(puzzle.table).name);
+  add(t('gallery.finished'), dateFormat.format(puzzle.createdAt));
 
   container.replaceChildren(createFrame(puzzle), el('h2', 'viewer-title', puzzle.name), details);
 }

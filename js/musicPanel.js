@@ -4,6 +4,7 @@ import { $ } from './app.js';
 import { MOODS, loadSettings, saveSettings, playMood, stopMusic, playingMood, setVolume } from './music.js';
 import { withTimeout } from './audio.js';
 import { setIcon } from './icons.js';
+import { t } from './i18n.js';
 
 
 const musicPanel = $('music');
@@ -71,8 +72,8 @@ async function playMusic(source) {
     ownAudio.pause();
     showMusicState();
     $('music-now').textContent = /timed out/.test(error?.message)
-      ? 'Sound didn’t start. Check the device isn’t muted (and its silent switch), then press Play.'
-      : 'Audio could not start. Press Play to try again.';
+      ? t('music.didNotStart')
+      : t('music.audioCouldNotStart');
     console.warn('Puzzle music could not start:', error);
   }
 }
@@ -88,11 +89,11 @@ function pauseMusic() {
 function showMusicState() {
   const playing = isMusicPlaying();
   setIcon(musicToggle.querySelector('svg'), playing ? 'i-pause' : 'i-play');
-  musicToggle.setAttribute('aria-label', playing ? 'Pause music' : 'Play music');
+  musicToggle.setAttribute('aria-label', playing ? t('music.pauseMusic') : t('music.playMusic'));
   const what = musicSource === 'own' && ownTracks.length
     ? ownTracks[ownIndex].name
     : MOODS.find((m) => m.id === musicSettings.mood).name;
-  $('music-now').textContent = musicStarting ? `Starting… · ${what}` : playing ? `Playing · ${what}` : `Paused · ${what}`;
+  $('music-now').textContent = t(musicStarting ? 'music.starting' : playing ? 'music.playingWhat' : 'music.pausedWhat', { a: what });
   musicBtn.classList.toggle('playing', playing);
   renderMoods();
 }
@@ -121,7 +122,7 @@ $('music-files').addEventListener('change', (e) => {
   for (const track of ownTracks) URL.revokeObjectURL(track.url);
   ownTracks = files.map((f) => ({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) }));
   ownIndex = 0;
-  $('music-own-label').textContent = `${files.length} ${files.length === 1 ? 'file' : 'files'} loaded · choose others`;
+  $('music-own-label').textContent = `${t(files.length === 1 ? 'music.fileLoaded' : 'music.filesLoaded', { a: files.length })} · ${t('music.chooseOthers')}`;
   e.target.value = '';
   playMusic('own');
 });

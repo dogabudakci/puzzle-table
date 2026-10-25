@@ -66,15 +66,15 @@ CREATE TABLE IF NOT EXISTS progress (
 
 def jpeg(data_b64, limit, what):
     if not isinstance(data_b64, str) or len(data_b64) > limit * 4 // 3 + 8:
-        raise AccountError(f"The {what} is too large.", 413)
+        raise AccountError(f"The {what} is too large.", 413, code="fileTooLarge", values={"a": what})
     try:
         data = base64.b64decode(data_b64, validate=True)
     except ValueError:
-        raise AccountError(f"The {what} couldn't be read.")
+        raise AccountError(f"The {what} couldn't be read.", code="fileUnreadable", values={"a": what})
     if len(data) > limit:
-        raise AccountError(f"The {what} is too large.", 413)
+        raise AccountError(f"The {what} is too large.", 413, code="fileTooLarge", values={"a": what})
     if not data.startswith(b"\xff\xd8\xff"):
-        raise AccountError(f"The {what} must be a JPEG.")
+        raise AccountError(f"The {what} must be a JPEG.", code="fileNotJpeg", values={"a": what})
     return data
 
 
@@ -91,7 +91,7 @@ def text(value, limit, default=""):
 def clean_puzzle(record):
     """The finished-puzzle fields the gallery uses, and nothing else."""
     if not isinstance(record, dict):
-        raise AccountError("Invalid puzzle.")
+        raise AccountError("Invalid puzzle.", code="invalidPuzzle")
     table = record.get("table")
     return {
         "name": text(record.get("name"), 200, "Puzzle"),
@@ -124,11 +124,11 @@ class UserData:
     def check_space(self, db, user_id, freed, added):
         """Refuses an upload that would take the player, or the whole site, over its storage limit."""
         if self.storage_used(db, user_id) - freed + added > MAX_STORAGE_BYTES:
-            raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409)
+            raise AccountError("Your account's storage is full. Remove a few puzzles to make room.", 409, code="accountStorageFull")
         # The whole database's real size (not just the pictures), so the plan's limit is never reached.
         total = self.accounts.database.size(db)
         if total - freed + added > MAX_TOTAL_STORAGE:
-            raise AccountError("Puzzle Table's storage is full right now, so this couldn't be saved. Sorry!", 507)
+            raise AccountError("Puzzle Table's storage is full right now, so this couldn't be saved. Sorry!", 507, code="siteStorageFull")
 
     def storage_used(self, db, user_id):
         row = db.execute(
@@ -148,7 +148,7 @@ class UserData:
     def add_gallery(self, user_id, body):
         uid = body.get("uid")
         if not isinstance(uid, str) or not UID_RE.match(uid):
-            raise AccountError("Invalid puzzle.")
+            raise AccountError("Invalid puzzle.", code="invalidPuzzle")
         meta = clean_puzzle(body.get("puzzle"))
         image = jpeg(body.get("image"), MAX_IMAGE_BYTES, "picture")
         with self.connect() as db:
@@ -157,7 +157,7 @@ class UserData:
                 return existing["id"]
             count = db.execute("SELECT COUNT(*) AS n FROM gallery WHERE user_id = ?", (user_id,)).fetchone()["n"]
             if count >= MAX_GALLERY_ITEMS:
-                raise AccountError("Your gallery is full. Remove a few puzzles to make room.", 409)
+                raise AccountError("Your gallery is full. Remove a few puzzles to make room.", 409, code="galleryFull")
             self.check_space(db, user_id, 0, len(image))
             return db.execute(
                 "INSERT INTO gallery (user_id, uid, meta, image, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
@@ -171,7 +171,7 @@ class UserData:
 
     def delete_gallery(self, user_id, item_id):
         if not isinstance(item_id, int):
-            raise AccountError("Invalid puzzle.")
+            raise AccountError("Invalid puzzle.", code="invalidPuzzle")
         with self.connect() as db:
             db.execute("DELETE FROM gallery WHERE id = ? AND user_id = ?", (item_id, user_id))
 
@@ -184,7 +184,7 @@ class UserData:
 
     def add_achievements(self, user_id, items):
         if not isinstance(items, list) or len(items) > 100:
-            raise AccountError("Invalid achievements.")
+            raise AccountError("Invalid achievements.", code="invalidAchievements")
         with self.connect() as db:
             for item in items:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not SLUG_RE.match(item["id"]):
@@ -202,7 +202,7 @@ class UserData:
 
     def add_days(self, user_id, days):
         if not isinstance(days, list) or len(days) > MAX_DAYS:
-            raise AccountError("Invalid days.")
+            raise AccountError("Invalid days.", code="invalidDays")
         with self.connect() as db:
             for day in days:
                 if isinstance(day, str) and DAY_RE.match(day):
@@ -211,13 +211,13 @@ class UserData:
     def daily_result(self, user_id, day, time_ms, moves):
         """Keeps the player's best time for a day's puzzle (it must be "today" somewhere in the world)."""
         if not isinstance(day, str) or not DAY_RE.match(day):
-            raise AccountError("Invalid day.")
+            raise AccountError("Invalid day.", code="invalidDay")
         nearby = {time.strftime("%Y-%m-%d", time.gmtime(time.time() + shift * 86400)) for shift in (-1, 0, 1)}
         if day not in nearby:
-            raise AccountError("That's not today's puzzle.")
+            raise AccountError("That's not today's puzzle.", code="notToday")
         # The time is the player's own clock: anything under 20 seconds isn't a real solve.
         if isinstance(time_ms, bool) or not isinstance(time_ms, (int, float)) or not 20000 <= time_ms <= 24 * 3600 * 1000:
-            raise AccountError("Invalid time.")
+            raise AccountError("Invalid time.", code="invalidTime")
         time_ms = int(time_ms)
         moves = number(moves, 0, 10 ** 6, 0)
         with self.connect() as db:
@@ -242,10 +242,10 @@ class UserData:
 
     def save_progress(self, user_id, meta):
         if not isinstance(meta, dict):
-            raise AccountError("Invalid save.")
+            raise AccountError("Invalid save.", code="invalidSave")
         encoded = json.dumps(meta)
         if len(encoded) > MAX_PROGRESS_JSON:
-            raise AccountError("This puzzle is too large to save.", 413)
+            raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
         with self.connect() as db:
             db.execute(
                 "INSERT INTO progress (user_id, meta, saved_at) VALUES (?, ?, ?)"
@@ -260,10 +260,10 @@ class UserData:
         thumb = jpeg(body.get("thumb"), 512 * 1024, "thumbnail")
         meta = body.get("progress")
         if not isinstance(meta, dict):
-            raise AccountError("Invalid save.")
+            raise AccountError("Invalid save.", code="invalidSave")
         encoded = json.dumps(meta)
         if len(encoded) > MAX_PROGRESS_JSON:
-            raise AccountError("This puzzle is too large to save.", 413)
+            raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
         with self.connect() as db:
             old = db.execute("SELECT LENGTH(photo) + LENGTH(thumb) AS size FROM progress WHERE user_id = ?", (user_id,)).fetchone()
             self.check_space(db, user_id, int((old["size"] or 0) if old else 0), len(photo) + len(thumb))

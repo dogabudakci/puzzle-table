@@ -96,12 +96,13 @@ check(all(abs(la[k]["nx"] - lb[k]["nx"]) < 0.03 for k in la), "same starting lay
 
 # Ann drags piece 1 next to piece 0 so they join
 JOIN = """((a, b) => {
+  const SPOTS = [.5, .44, .56, .4, .6, .33, .67, .27, .73];
   const pa = document.querySelector(`#table .piece[data-index="${a}"]`), pb = document.querySelector(`#table .piece[data-index="${b}"]`);
   const t = (el) => el.parentElement.style.transform.match(/translate\\(([-\\d.]+)px, ([-\\d.]+)px\\)/).slice(1).map(Number);
   const [ax, ay] = t(pa), [bx, by] = t(pb);
   const r = pb.getBoundingClientRect();
   // A spot on the piece that no other piece covers.
-  for (const fy of [.5, .44, .56, .4, .6]) for (const fx of [.5, .44, .56, .4, .6]) {
+  for (const fy of SPOTS) for (const fx of SPOTS) {
     const x = r.left + r.width * fx, y = r.top + r.height * fy;
     const top = document.elementsFromPoint(x, y).find((e) => e.classList.contains('piece'));
     if (top === pb) return {x, y, dx: ax - bx, dy: ay - by};
@@ -113,6 +114,7 @@ ann.drag(d["x"], d["y"], d["x"] + d["dx"], d["y"] + d["dy"])
 # Drags a piece's group to where it belongs on the mat (always within reach, like a player building
 # the puzzle in place); the second piece of a pair then snaps onto the first.
 TO_PLACE = """((i) => {
+  const SPOTS = [.5, .44, .56, .4, .6, .33, .67, .27, .73];
   const piece = document.querySelector(`#table .piece[data-index="${i}"]`);
   const mat = document.querySelector('.work-mat');
   const pad = -parseFloat(document.querySelector('#table .piece[data-index="0"]').style.left);
@@ -120,7 +122,7 @@ TO_PLACE = """((i) => {
   const tx = parseFloat(mat.style.left) + pad, ty = parseFloat(mat.style.top) + pad;
   const zoom = +(document.querySelector('#table .world').style.transform.match(/scale\\(([\\d.]+)\\)/) || [0, 1])[1];
   const r = piece.getBoundingClientRect();
-  for (const fy of [.5, .44, .56, .4, .6]) for (const fx of [.5, .44, .56, .4, .6]) {
+  for (const fy of SPOTS) for (const fx of SPOTS) {
     const x = r.left + r.width * fx, y = r.top + r.height * fy;
     if (x < 2 || y < 60 || x > innerWidth - 2 || y > innerHeight - 2) continue;
     const top = document.elementsFromPoint(x, y).find((e) => e.classList.contains('piece'));
@@ -130,20 +132,28 @@ TO_PLACE = """((i) => {
 })(%d)"""
 
 
-COVER = """((i) => { const piece = document.querySelector(`#table .piece[data-index="${i}"]`); const r = piece.getBoundingClientRect();
-  const top = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((e) => e.classList.contains('piece'));
-  return top ? +top.dataset.index : null; })(%d)"""
+# The piece lying on top of piece i (the first one found over it, from its middle outwards).
+COVER = """((i) => { const SPOTS = [.5, .44, .56, .4, .6, .33, .67, .27, .73]; const piece = document.querySelector(`#table .piece[data-index="${i}"]`); const r = piece.getBoundingClientRect();
+  for (const fy of SPOTS) for (const fx of SPOTS) {
+    const top = document.elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy).find((e) => e.classList.contains('piece'));
+    if (top && top.parentElement !== piece.parentElement) return +top.dataset.index;
+  }
+  return null; })(%d)"""
 
 
 def place(p, i, depth=0):
-    d = p.js(TO_PLACE % i)
-    if d is None and depth < 3:
-        # Another piece lies on top: put that one in its place first, as a player would.
-        place(p, p.js(COVER % i), depth + 1)
+    # Up to three tries: a piece measured while a friend's move still glides in lands off target.
+    for _ in range(3):
         d = p.js(TO_PLACE % i)
-    if d is None:
-        raise SystemExit(f"FAIL: piece {i} can't be reached")
-    if not d["done"]:
+        if d is None and depth < 3:
+            # Another piece lies on top: put that one in its place first, as a player would.
+            place(p, p.js(COVER % i), depth + 1)
+            d = p.js(TO_PLACE % i)
+        if d is None:
+            p.shot(OUT + "/fail-reach.png")
+            raise SystemExit(f"FAIL: piece {i} can't be reached")
+        if d["done"]:
+            return
         p.drag(d["x"], d["y"], d["x"] + d["dx"], d["y"] + d["dy"])
         time.sleep(0.6)
 

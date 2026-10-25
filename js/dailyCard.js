@@ -8,6 +8,7 @@ import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { pieceOptions } from './pieceOptions.js';
 import { formatTime } from './timer.js';
 import { icon } from './icons.js';
+import { t, photoName } from './i18n.js';
 
 
 let dailyToday = null; // { key, photo } for today's daily puzzle
@@ -31,11 +32,11 @@ export async function refreshDaily() {
 
   $('daily-img').src = libraryThumbUrl(photo);
   showDailyBoard(key);
-  $('daily-title').textContent = photo.name;
+  $('daily-title').textContent = photoName(photo);
   $('daily-date').textContent = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const streakEl = $('daily-streak');
   streakEl.classList.toggle('cold', run === 0);
-  streakEl.replaceChildren(icon('i-flame'), run > 0 ? `${run}-day streak` : 'Start a streak today');
+  streakEl.replaceChildren(icon('i-flame'), run > 0 ? t('daily.dayStreak', { a: run }) : t('daily.startStreakToday'));
 
   const button = $('daily-btn');
   button.classList.toggle('done', doneToday);
@@ -46,17 +47,17 @@ export async function refreshDaily() {
       const ms = msUntilTomorrow();
       const h = Math.floor(ms / 3600000);
       const m = Math.floor(ms / 60000) % 60;
-      $('daily-message').textContent = `Lovely work. A new puzzle arrives in ${h} h ${m} min. See you tomorrow.`;
+      $('daily-message').textContent = t('daily.lovelyWorkNewPuzzle', { a: h, b: m });
       if (dayKey() !== key) refreshDaily(); // midnight passed while the page was open
     };
     showNext();
     dailyCountdown = setInterval(showNext, 30000);
-    button.replaceChildren(icon('i-check'), 'Done for today');
+    button.replaceChildren(icon('i-check'), t('daily.doneToday'));
   } else {
     $('daily-message').textContent = run > 0
-      ? `Play today to keep your ${run}-day streak going.`
-      : `A new ${DAILY_PIECES}-piece puzzle every day, the same one for everyone.`;
-    button.textContent = 'Play today’s puzzle';
+      ? t('daily.playTodayKeepDay', { a: run })
+      : t('daily.newPiecePuzzleEvery', { a: DAILY_PIECES });
+    button.textContent = t('daily.playTodayPuzzle');
   }
   renderCalendar($('daily-cal'), days, key);
   card.hidden = false;
@@ -87,7 +88,7 @@ async function startDaily() {
     state.pendingSeed = daySeed(key);
     await app.startGame();
   } catch {
-    showUploadError("Today's puzzle couldn't be loaded. Try again in a moment.");
+    showUploadError(t('daily.todayPuzzleCouldnLoaded'));
   } finally {
     refreshDaily();
   }
@@ -102,7 +103,7 @@ export function showDailyDone(timeMs, moves) {
   const day = state.daily;
   const days = markDone(day);
   const run = streak(days);
-  const text = run > 1 ? `Daily puzzle done · ${run}-day streak` : 'Daily puzzle done · streak started';
+  const text = run > 1 ? t('daily.doneStreak', { a: run }) : t('daily.doneStreakStarted');
   note.replaceChildren(icon('i-flame'), text);
   note.hidden = false;
   saveDailyResult(day, timeMs, moves)
@@ -110,7 +111,7 @@ export function showDailyDone(timeMs, moves) {
     .then((board) => {
       const place = board.findIndex((row) => row.me) + 1;
       if (place && board.length > 1 && state.daily === day) {
-        note.replaceChildren(icon('i-flame'), `${text} · #${place} of ${board.length} friends today`);
+        note.replaceChildren(icon('i-flame'), `${text} · ${t('daily.friendsToday', { a: place, b: board.length })}`);
       }
       refreshDaily();
     })
@@ -128,7 +129,7 @@ async function showDailyBoard(day) {
     const rank = document.createElement('span');
     rank.textContent = `${i + 1}`;
     const name = document.createElement('span');
-    name.textContent = row.me ? 'You' : row.username;
+    name.textContent = row.me ? t('daily.text') : row.username;
     const time = document.createElement('strong');
     time.textContent = formatTime(row.timeMs);
     item.append(rank, name, time);

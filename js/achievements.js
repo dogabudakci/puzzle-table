@@ -1,24 +1,25 @@
+import { t } from './i18n.js';
 // Achievements, each checked against every finished puzzle in the gallery.
 // `icon` names a symbol in the index.html sprite.
 
 export const ACHIEVEMENTS = [
-  { id: 'first', icon: 'm-first', name: 'First Masterpiece', hint: 'Finish your first puzzle',
+  { id: 'first', icon: 'm-first', name: t('gallery.firstMasterpiece'), hint: t('gallery.finishFirstPuzzle'),
     test: (all) => all.length >= 1 },
-  { id: 'collector', icon: 'm-collector', name: 'Collector', hint: 'Finish 5 puzzles',
+  { id: 'collector', icon: 'm-collector', name: t('gallery.collector'), hint: t('gallery.finish5Puzzles'),
     test: (all) => all.length >= 5 },
-  { id: 'curator', icon: 'm-curator', name: 'Curator', hint: 'Finish 15 puzzles',
+  { id: 'curator', icon: 'm-curator', name: t('gallery.curator'), hint: t('gallery.finish15Puzzles'),
     test: (all) => all.length >= 15 },
-  { id: 'centurion', icon: 'm-centurion', name: 'Centurion', hint: 'Finish a puzzle with 100 or more pieces',
+  { id: 'centurion', icon: 'm-centurion', name: t('gallery.centurion'), hint: t('gallery.finishPuzzle100More'),
     test: (all) => all.some((p) => p.pieces >= 100) },
-  { id: 'grandmaster', icon: 'm-grandmaster', name: 'Grand Master', hint: 'Finish a puzzle with 300 or more pieces',
+  { id: 'grandmaster', icon: 'm-grandmaster', name: t('gallery.grandMaster'), hint: t('gallery.finishPuzzle300More'),
     test: (all) => all.some((p) => p.pieces >= 300) },
-  { id: 'beat-clock', icon: 'm-clock', name: 'Beat the Clock', hint: 'Finish a countdown puzzle before time runs out',
+  { id: 'beat-clock', icon: 'm-clock', name: t('gallery.beatClock2'), hint: t('gallery.finishCountdownPuzzleBefore'),
     test: (all) => all.some((p) => p.beatClock) },
-  { id: 'quick-hands', icon: 'm-quick', name: 'Quick Hands', hint: 'Finish 48 or more pieces in under 5 minutes',
+  { id: 'quick-hands', icon: 'm-quick', name: t('gallery.quickHands'), hint: t('gallery.finish48MorePieces'),
     test: (all) => all.some((p) => p.pieces >= 48 && p.timeMs < 5 * 60 * 1000) },
-  { id: 'unaided', icon: 'm-solo', name: 'Unaided', hint: 'Finish 48 or more pieces without a hint',
+  { id: 'unaided', icon: 'm-solo', name: t('gallery.unaided'), hint: t('gallery.finish48MorePieces2'),
     test: (all) => all.some((p) => p.pieces >= 48 && p.hintsUsed === 0) },
-  { id: 'table-hopper', icon: 'm-tables', name: 'Table Hopper', hint: 'Finish puzzles on 3 different tables',
+  { id: 'table-hopper', icon: 'm-tables', name: t('gallery.tableHopper'), hint: t('gallery.finishPuzzles3Different'),
     test: (all) => new Set(all.map((p) => p.table)).size >= 3 },
 ];
 

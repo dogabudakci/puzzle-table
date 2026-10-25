@@ -213,7 +213,7 @@ class Call:
     def require_user(self):
         user = self.current_user()
         if not user:
-            raise AccountError("Please sign in first.", 401)
+            raise AccountError("Please sign in first.", 401, code="signInFirst")
         return user
 
 
@@ -241,20 +241,20 @@ async def read_json(request, limit):
     try:
         length = int(request.headers.get("content-length") or 0)
     except ValueError:
-        raise AccountError("Invalid request.")
+        raise AccountError("Invalid request.", code="invalidRequest")
     if length < 0 or length > limit:
-        raise AccountError("Request too large.", 413)
+        raise AccountError("Request too large.", 413, code="requestTooLarge")
     body = b""
     async for chunk in request.stream():  # also stops a body that's longer than it said
         body += chunk
         if len(body) > limit:
-            raise AccountError("Request too large.", 413)
+            raise AccountError("Request too large.", 413, code="requestTooLarge")
     try:
         data = json.loads(body or b"{}")
     except ValueError:
-        raise AccountError("Invalid request.")
+        raise AccountError("Invalid request.", code="invalidRequest")
     if not isinstance(data, dict):
-        raise AccountError("Invalid request.")
+        raise AccountError("Invalid request.", code="invalidRequest")
     return data
 
 
@@ -280,7 +280,7 @@ def api(handler, method="POST", limit=MAX_BODY):
         try:
             if method == "POST":
                 if not same_origin(request):
-                    return json_response(403, {"error": "Request refused."})
+                    return json_response(403, {"error": "Request refused.", "code": "refused"})
                 body = await read_json(request, limit)
             else:
                 body = {}
@@ -288,10 +288,10 @@ def api(handler, method="POST", limit=MAX_BODY):
             result = await run_in_threadpool(handler, call, **request.path_params)
             return result if isinstance(result, Response) else json_response(200, result)
         except AccountError as err:
-            return json_response(err.status, {"error": str(err)})
+            return json_response(err.status, {"error": str(err), "code": err.code, "values": err.values})
         except Exception as err:  # never leak details to the browser
             print(f"api error on {request.url.path}: {err!r}", flush=True)
-            return json_response(500, {"error": "Something went wrong. Please try again."})
+            return json_response(500, {"error": "Something went wrong. Please try again.", "code": "somethingWrong"})
     return endpoint
 
 
@@ -483,7 +483,7 @@ async def events(request):
     """Server-sent events: friend requests, invites and live-game moves arrive here as they happen."""
     user = await run_in_threadpool(accounts.session_user, request.cookies.get(COOKIE))
     if not user:
-        return json_response(401, {"error": "Please sign in first."})
+        return json_response(401, {"error": "Please sign in first.", "code": "signInFirst"})
     user_id = user["id"]
     stream, first = hub.subscribe(user_id)
     if first:

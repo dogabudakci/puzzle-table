@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // The cloth pouch the pieces start in.
 
 const POUCH_SVG = `
@@ -78,8 +79,8 @@ export function createPouch(pieceCount, onOpen) {
   const pouch = document.createElement('button');
   pouch.type = 'button';
   pouch.className = 'pouch';
-  pouch.setAttribute('aria-label', `Open the pouch and spill ${pieceCount} pieces`);
-  pouch.innerHTML = `${POUCH_SVG}<span class="pouch-hint">Click the pouch to spill ${pieceCount} pieces</span>`;
+  pouch.setAttribute('aria-label', t('play.openPouchSpillPieces', { a: pieceCount }));
+  pouch.innerHTML = `${POUCH_SVG}<span class="pouch-hint">${t('play.clickPouchSpillPieces', { a: pieceCount })}</span>`;
 
   pouch.addEventListener('click', () => {
     if (pouch.classList.contains('opening')) return;

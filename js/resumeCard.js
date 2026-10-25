@@ -5,6 +5,7 @@ import { loadProgress, clearProgress } from './library.js';
 import { createSaver } from './saving.js';
 import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { formatTime } from './timer.js';
+import { t } from './i18n.js';
 
 
 let saveTimer = null;
@@ -84,21 +85,21 @@ export async function refreshResume() {
   const percent = Math.round((saved.progress ?? 0) * 100);
   $('resume-pct').textContent = `${percent}%`;
   $('resume-fill').style.width = `${percent}%`;
-  $('resume-title').textContent = saved.mystery ? 'Mystery puzzle'
-    : saved.daily ? 'Daily puzzle' : saved.name.replace(/\.[a-z0-9]+$/i, '');
+  $('resume-title').textContent = saved.mystery ? t('start.mysteryPuzzle')
+    : saved.daily ? t('daily.dailyPuzzle') : saved.name.replace(/\.[a-z0-9]+$/i, '');
   $('resume-card').classList.toggle('mystery', Boolean(saved.mystery));
-  $('resume-meta').textContent = `${saved.pieces.count} pieces · ${formatTime(saved.elapsed)} played · ${savedAgo(saved.savedAt)}`;
+  $('resume-meta').textContent = `${t('start.pieces2', { a: saved.pieces.count })} · ${t('resume.played', { a: formatTime(saved.elapsed) })} · ${savedAgo(saved.savedAt)}`;
   card.hidden = false;
 }
 
 function savedAgo(time) {
   const minutes = Math.round((Date.now() - time) / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t('resume.justNow');
+  if (minutes < 60) return t('resume.minAgo', { a: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  if (hours < 24) return t('resume.hAgo', { a: hours });
   const days = Math.round(hours / 24);
-  return days === 1 ? 'yesterday' : `${days} days ago`;
+  return days === 1 ? 'yesterday' : t('resume.daysAgo', { a: days });
 }
 
 async function continueSaved() {
@@ -122,7 +123,7 @@ async function continueSaved() {
     app.showPhoto(photo); // again, now that it's known whether the photo is a secret
     await app.startGame({ restore: saved });
   } catch {
-    showUploadError("That puzzle couldn't be opened. Try starting a new one.");
+    showUploadError(t('resume.puzzleCouldnOpenedTry'));
   } finally {
     button.disabled = false;
   }

@@ -7,6 +7,7 @@ import { ACHIEVEMENTS, newlyEarned } from './achievements.js';
 import { renderGallery, renderViewer } from './gallery.js';
 import { tableTextureUrl } from './textures.js';
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 
 const viewer = $('viewer');
 
@@ -49,7 +50,7 @@ export async function saveToGallery(result) {
     if (fresh.length) await saveAchievements(fresh.map((a) => ({ id: a.id, earnedAt: Date.now() })));
     showGalleryCount(puzzles.length);
 
-    savedNote.replaceChildren(icon('i-check'), 'Framed and hung in your gallery');
+    savedNote.replaceChildren(icon('i-check'), t('play.framedHungGallery'));
     $('new-medals').replaceChildren(...fresh.map((a, i) => {
       const medal = document.createElement('span');
       medal.className = 'new-medal';
@@ -57,12 +58,12 @@ export async function saveToGallery(result) {
       const coin = document.createElement('span');
       coin.className = 'coin';
       coin.append(icon(a.icon, 'coin-icon'));
-      medal.append(coin, `Achievement unlocked: ${a.name}`);
+      medal.append(coin, t('play.achievementUnlocked', { a: a.name }));
       return medal;
     }));
   } catch (err) {
     console.error(err);
-    savedNote.textContent = "Couldn't save to your gallery: this browser isn't allowing storage.";
+    savedNote.textContent = t('play.couldnSaveGalleryBrowser');
   }
 }
 
@@ -107,7 +108,7 @@ export async function showGallery() {
     });
   } catch (err) {
     console.error(err);
-    parts.emptyNote.textContent = "Your gallery can't be opened: this browser isn't allowing storage.";
+    parts.emptyNote.textContent = t('gallery.galleryOpenedBrowserIsn');
     parts.emptyNote.hidden = false;
   }
 }
@@ -154,12 +155,12 @@ $('viewer-replay').addEventListener('click', async () => {
 const deleteBtn = $('viewer-delete');
 function resetDeleteButton() {
   deleteBtn.dataset.confirm = '';
-  deleteBtn.querySelector('span').textContent = 'Remove';
+  deleteBtn.querySelector('span').textContent = t('gallery.remove');
 }
 deleteBtn.addEventListener('click', async () => {
   if (!deleteBtn.dataset.confirm) {
     deleteBtn.dataset.confirm = 'yes';
-    deleteBtn.querySelector('span').textContent = 'Click again to remove';
+    deleteBtn.querySelector('span').textContent = t('gallery.clickAgainRemove');
     return;
   }
   await deletePuzzle(openPuzzle.id);

@@ -1,3 +1,4 @@
+import { t, serverMessage } from './i18n.js';
 // Talking to the app's own server. The session is an HttpOnly cookie the browser sends by
 // itself; requests are JSON, which the server requires (part of its cross-site protection).
 
@@ -15,10 +16,10 @@ export async function api(path, body, { keepalive = false } = {}) {
   try {
     response = await fetch(`/api/${path}`, options);
   } catch {
-    throw new Error("Can't reach the server. Check your connection and try again.");
+    throw new Error(t('account.reachServerCheckConnection'));
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  if (!response.ok) throw new Error(serverMessage(data, t('account.somethingWentWrongPlease')));
   return data;
 }
 

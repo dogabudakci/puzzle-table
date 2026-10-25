@@ -1,16 +1,17 @@
+import { t } from './i18n.js';
 // Table surfaces: seamless photographic textures (CC0, from Poly Haven and ambientCG),
 // stored in assets/tables/. `tile` is how wide one repeat of the texture is on screen (CSS px),
 // chosen so wood grain, marble veins and fabric weave look life-size.
 
 export const TABLES = [
-  { id: 'oak', name: 'Oak', color: '#b28a62', tile: 900 },
-  { id: 'walnut', name: 'Walnut', color: '#4a2a1a', tile: 900 },
-  { id: 'white-marble', name: 'White marble', color: '#e6e6e8', tile: 1100 },
-  { id: 'cream-marble', name: 'Cream marble', color: '#ddd0bb', tile: 1100 },
-  { id: 'black-marble', name: 'Black marble', color: '#222224', tile: 1100 },
-  { id: 'felt', name: 'Green felt', color: '#2b5f44', tile: 600 },
-  { id: 'linen', name: 'Linen', color: '#d2c7b2', tile: 420 },
-  { id: 'leather', name: 'Leather', color: '#4b2e1c', tile: 800 },
+  { id: 'oak', name: t('table.oak'), color: '#b28a62', tile: 900 },
+  { id: 'walnut', name: t('table.walnut'), color: '#4a2a1a', tile: 900 },
+  { id: 'white-marble', name: t('table.whiteMarble'), color: '#e6e6e8', tile: 1100 },
+  { id: 'cream-marble', name: t('table.creamMarble'), color: '#ddd0bb', tile: 1100 },
+  { id: 'black-marble', name: t('table.blackMarble'), color: '#222224', tile: 1100 },
+  { id: 'felt', name: t('table.greenFelt'), color: '#2b5f44', tile: 600 },
+  { id: 'linen', name: t('table.linen'), color: '#d2c7b2', tile: 420 },
+  { id: 'leather', name: t('table.leather'), color: '#4b2e1c', tile: 800 },
 ];
 
 export const DEFAULT_TABLE = 'oak';
@@ -40,7 +41,7 @@ export function createTablePicker(selectedId, onPick) {
   const wrap = document.createElement('div');
   wrap.className = 'table-picker';
   wrap.setAttribute('role', 'radiogroup');
-  wrap.setAttribute('aria-label', 'Table surface');
+  wrap.setAttribute('aria-label', t('start.tableSurface'));
 
   for (const table of TABLES) {
     const button = document.createElement('button');

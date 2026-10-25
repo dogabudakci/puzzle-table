@@ -4,6 +4,7 @@ import { $, state } from './app.js';
 import { listPuzzles } from './library.js';
 import { formatTime } from './timer.js';
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 
 const completeCard = $('complete-card');
 let cardTimer = null;
@@ -18,7 +19,7 @@ export function starRating(pieceCount, moves, hintsUsed) {
 
 export function showStars(stars) {
   const row = $('result-stars');
-  row.setAttribute('aria-label', `${stars} of 3 stars`);
+  row.setAttribute('aria-label', t('result.starsOf', { a: stars }));
   row.replaceChildren(...[0, 1, 2].map((i) => {
     const star = icon('i-star');
     if (i < stars) {
@@ -37,7 +38,7 @@ export async function showPersonalBest(pieceCount, timeMs) {
     if (!earlier.length) return;
     const best = Math.min(...earlier.map((p) => p.timeMs));
     badge.classList.toggle('quiet', timeMs >= best);
-    badge.textContent = timeMs < best ? `New personal best · ${pieceCount} pieces` : `Your best: ${formatTime(best)}`;
+    badge.textContent = timeMs < best ? t('play.newPersonalBestPieces', { a: pieceCount }) : t('play.best', { a: formatTime(best) });
     badge.hidden = false;
   } catch {
     // Gallery storage unavailable: just leave the badge out.

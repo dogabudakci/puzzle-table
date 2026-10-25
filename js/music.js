@@ -2,6 +2,7 @@
 // and no licences to worry about. Each mood is a small generative piece that never repeats exactly.
 
 import { getAudioContext, resumeAudio } from './audio.js';
+import { t } from './i18n.js';
 
 const SETTINGS_KEY = 'puzzle-music';
 const LOOKAHEAD = 1.2; // seconds of notes scheduled ahead, so background tabs don't stutter
@@ -410,12 +411,12 @@ function forest(out) {
 }
 
 export const MOODS = [
-  { id: 'piano', name: 'Soft piano', description: 'Gentle notes, slow chords', start: softPiano, reverb: 0.6 },
-  { id: 'ambient', name: 'Warm ambient', description: 'Slow pads and soft bells', start: warmAmbient, reverb: 0.8 },
-  { id: 'lofi', name: 'Lo-fi', description: 'Mellow beats and chords', start: lofi, reverb: 0.25 },
-  { id: 'musicbox', name: 'Music box', description: 'A tiny lullaby', start: musicBox, reverb: 0.7 },
-  { id: 'rain', name: 'Rain', description: 'Soft rainfall', start: rain, reverb: 0.15 },
-  { id: 'forest', name: 'Forest', description: 'Breeze and birdsong', start: forest, reverb: 0.35 },
+  { id: 'piano', name: t('music.softPiano'), description: t('music.gentleNotesSlowChords'), start: softPiano, reverb: 0.6 },
+  { id: 'ambient', name: t('music.warmAmbient'), description: t('music.slowPadsSoftBells'), start: warmAmbient, reverb: 0.8 },
+  { id: 'lofi', name: t('music.loFi'), description: t('music.mellowBeatsChords'), start: lofi, reverb: 0.25 },
+  { id: 'musicbox', name: t('music.musicBox'), description: t('music.tinyLullaby'), start: musicBox, reverb: 0.7 },
+  { id: 'rain', name: t('music.rain'), description: t('music.softRainfall'), start: rain, reverb: 0.15 },
+  { id: 'forest', name: t('music.forest'), description: t('music.breezeBirdsong'), start: forest, reverb: 0.35 },
 ];
 
 /* ---------- Play / stop ---------- */

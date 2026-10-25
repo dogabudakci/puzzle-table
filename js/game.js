@@ -19,6 +19,7 @@ import { puzzleSizeOnScreen } from './pieceOptions.js';
 import { getTable, tableTextureUrl } from './textures.js';
 import { createPouch } from './pouch.js';
 import { playSnap, playDrop, playComplete, playPouchOpen, confetti } from './effects.js';
+import { t } from './i18n.js';
 
 const SPILL_TIME = 1100; // ms until the last piece starts flying out
 const SNAP_RATIO = 0.25;  // how close (relative to piece size) counts as "fits"
@@ -57,8 +58,7 @@ export class PuzzleGame {
     this.selected = null; // the group chosen with the keyboard
     this.table.tabIndex = 0;
     this.table.setAttribute('role', 'application');
-    this.table.setAttribute('aria-label',
-      'Puzzle table. Arrow keys choose a piece, Space picks it up, arrow keys move it, Space puts it down. N goes to the next piece.');
+    this.table.setAttribute('aria-label', t('keys.tableLabel'));
     this.pointers = new Map(); // touches/pointers on the table that aren't moving a piece (pan, pinch)
     this.pan = null;
     this.onChange = onChange; // called after anything worth saving changes
@@ -106,7 +106,7 @@ export class PuzzleGame {
       this.pouch = createPouch(pieces.length, (mouth) => this.spill(mouth));
       if (autoPouch) {
         this.pouch.disabled = true;
-        this.pouch.querySelector('.pouch-hint').textContent = 'Get ready…';
+        this.pouch.querySelector('.pouch-hint').textContent = t('play.getReady');
       }
       this.table.append(this.pouch);
     }
@@ -500,7 +500,7 @@ export class PuzzleGame {
       e.preventDefault();
       this.placeGroup(this.drag.group, this.drag.startX, this.drag.startY);
       this.putDown(); // (also lets a friend on a shared table take it again)
-      this.announce?.('Put back where it was.');
+      this.announce?.(t('keys.putBack'));
     } else if (e.key.toLowerCase() === 'n' && !holding) {
       e.preventDefault();
       const order = this.groupsInOrder();
@@ -553,21 +553,21 @@ export class PuzzleGame {
     group.el.classList.add('kb-selected');
     this.keepInView(group);
     const n = group.pieces.length;
-    this.announce?.(n > 1 ? `Group of ${n} pieces. Space picks it up.` : 'Piece selected. Space picks it up.');
+    this.announce?.(n > 1 ? t('keys.groupSelected', { a: n }) : t('keys.pieceSelected'));
   }
 
   keyboardPickUp() {
     const group = this.selected;
-    if (this.isRemoteHeld(group)) return this.announce?.('Your friend has this one.');
+    if (this.isRemoteHeld(group)) return this.announce?.(t('keys.friendHasIt'));
     this.pickUp(group, this.groupCentre(group), { pointerId: 'keyboard' });
-    this.announce?.('Picked up. Move it with the arrow keys, Space puts it down.');
+    this.announce?.(t('keys.pickedUp'));
   }
 
   keyboardDrop() {
     const { group, joined } = this.putDown();
     if (this.groups.size === 1) return; // finished: the puzzle says so itself
     this.selectGroup(group);
-    this.announce?.(joined ? `Joined! ${Math.round(this.progress() * 100)}% done.` : 'Put down.');
+    this.announce?.(joined ? t('keys.joined', { a: Math.round(this.progress() * 100) }) : t('keys.putDown'));
   }
 
   // Scrolls a zoomed table so the group is on screen.

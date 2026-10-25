@@ -7,6 +7,7 @@
 
 import { api } from './api.js';
 import { formatTime } from './timer.js';
+import { t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const MOVE_EVERY = 80; // ms between move updates
@@ -139,7 +140,7 @@ export class MatchSession {
     const tick = () => {
       const left = startAt - this.serverNow();
       if (left <= 0) {
-        number.textContent = 'Go!';
+        number.textContent = t('play.go');
         number.classList.remove('beat');
         void number.offsetWidth;
         number.classList.add('beat');
@@ -156,7 +157,7 @@ export class MatchSession {
       }
       this.countdownTimer = setTimeout(tick, Math.min(100, left));
     };
-    $('countdown-text').textContent = this.mode === 'race' ? `Race against ${this.friend}` : `Puzzling with ${this.friend}`;
+    $('countdown-text').textContent = this.mode === 'race' ? t('match.raceAgainst', { a: this.friend }) : t('match.puzzling', { a: this.friend });
     tick();
   }
 
@@ -170,7 +171,7 @@ export class MatchSession {
     const el = $('countdown');
     el.hidden = !waiting && !this.countdownTimer;
     $('countdown-number').textContent = '';
-    $('countdown-text').textContent = waiting ? `Waiting for ${this.friend} to join the table…` : '';
+    $('countdown-text').textContent = waiting ? t('match.waitingJoinTable', { a: this.friend }) : '';
     el.classList.toggle('waiting', waiting);
   }
 
@@ -271,10 +272,10 @@ export class MatchSession {
     chip.classList.toggle('online', Boolean(online));
     chip.classList.toggle('race', this.mode === 'race');
     $('friend-chip-name').textContent = this.mode === 'race' ? this.friend
-      : this.mode === 'together' ? `with ${this.friend}` : `vs ${this.friend}`;
+      : this.mode === 'together' ? t('match.text', { a: this.friend }) : t('match.vs', { a: this.friend });
     $('friend-chip-fill').style.width = `${Math.round(this.friendShare * 100)}%`;
-    chip.title = `${this.friend} is ${online ? 'here' : 'away'}` +
-      (this.mode === 'race' ? ` · ${Math.round(this.friendShare * 100)}% done` : '');
+    chip.title = t(online ? 'match.here' : 'match.away', { a: this.friend }) +
+      (this.mode === 'race' ? ` · ${t('match.done', { a: Math.round(this.friendShare * 100) })}` : '');
   }
 
   /* ---------- Challenges ---------- */
@@ -314,14 +315,16 @@ export class MatchSession {
 export function resultLine(session, match, reply) {
   const name = session.friend;
   const mine = reply?.timeMs ?? match?.me?.timeMs;
-  if (session.mode === 'together') return `Finished together with ${name}${mine ? ` in ${formatTime(mine)}` : ''}`;
-  if (session.mode === 'race') {
-    return reply?.late ? `${name} finished first. Well played!` : `You won the race against ${name}!`;
+  if (session.mode === 'together') {
+    return mine ? t('match.finishedTogether', { a: name, b: formatTime(mine) }) : t('match.finishedTogether2', { a: name });
   }
-  if (match?.status !== 'finished') return `Your time is in. ${name} hasn't played yet: we'll let you know.`;
+  if (session.mode === 'race') {
+    return reply?.late ? t('match.finishedFirstWellPlayed', { a: name }) : t('match.wonRaceAgainst', { a: name });
+  }
+  if (match?.status !== 'finished') return t('match.timeHasnPlayedYet', { a: name });
   const theirs = match.them?.timeMs;
-  const times = theirs ? ` (${formatTime(mine)} vs ${formatTime(theirs)})` : '';
-  if (match.winner === 'me') return `You won the challenge against ${name}${times}!`;
-  if (match.winner === 'friend') return `${name} won this one${times}. Rematch?`;
-  return `A draw with ${name}${times}`;
+  const both = { a: name, b: formatTime(mine), c: formatTime(theirs) };
+  if (match.winner === 'me') return theirs ? t('match.wonChallengeAgainstVs', both) : t('match.wonChallengeAgainst', { a: name });
+  if (match.winner === 'friend') return theirs ? t('match.wonOneVsRematch', both) : t('match.wonOneRematch', { a: name });
+  return theirs ? t('match.drawVs', both) : t('match.draw', { a: name });
 }

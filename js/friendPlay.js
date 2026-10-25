@@ -10,6 +10,7 @@ import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { formatTime } from './timer.js';
 import { starRating, showStars, showCompleteCard } from './resultCard.js';
 import { saveToGallery } from './galleryScreen.js';
+import { t } from './i18n.js';
 
 // While playing with a friend, say so when the connection drops, and catch up once it's back.
 export function showConnection(online) {
@@ -25,8 +26,8 @@ export async function startMatch(matchId) {
   let match;
   try {
     ({ match } = await api(`match/${matchId}`));
-    if (match.status === 'invited') throw new Error(`${match.friend.username} hasn't answered yet.`);
-    if (match.status !== 'accepted' || !match.puzzle) throw new Error('This game is over.');
+    if (match.status === 'invited') throw new Error(t('friends.hasnAnsweredYet2', { a: match.friend.username }));
+    if (match.status !== 'accepted' || !match.puzzle) throw new Error(t('friends.gameOver'));
     const { puzzle } = match;
     const listed = puzzle.libraryId && (await loadLibrary()).find((p) => p.id === puzzle.libraryId);
     const file = puzzle.libraryId
@@ -58,16 +59,16 @@ export async function startMatch(matchId) {
     },
     onFriendFinished: (timeMs) => {
       if (state.match === session && !state.game?.ready) return;
-      app.showToast(`${session.friend} finished first in ${formatTime(timeMs)}. Finish yours for fun!`, 6000);
+      app.showToast(t('match.finishedFirstFinishYours', { a: session.friend, b: formatTime(timeMs) }), 6000);
     },
     onConnection: showConnection,
     onReaction: (reaction) => showReaction(REACTIONS[reaction], session.friend),
-    onEnded: () => app.showToast(`This game with ${session.friend} has ended.`, 6000),
+    onEnded: () => app.showToast(t('match.gameHasEnded', { a: session.friend }), 6000),
     onFriendLeft: () => {
       if (state.match !== session) return;
       const message = session.mode === 'together'
-        ? `${session.friend} left the table. You can finish on your own.`
-        : session.mode === 'race' && session.started ? `${session.friend} gave up. You win the race!` : `${session.friend} left the game.`;
+        ? t('match.leftTableFinishOwn', { a: session.friend })
+        : session.mode === 'race' && session.started ? t('match.gaveUpWinRace', { a: session.friend }) : t('match.leftGame', { a: session.friend });
       app.showToast(message, 6000);
     },
   });
@@ -90,10 +91,10 @@ export async function finishMatch(match) {
   const timeMs = reply?.timeMs ?? clock.elapsed;
   $('stat-time').textContent = formatTime(timeMs);
   $('stat-pieces').textContent = state.pieces.count;
-  $('stat-extra-label').textContent = 'Game';
+  $('stat-extra-label').textContent = t('play.game');
   $('stat-extra').textContent = MODE_NAMES[match.mode];
   $('stat-extra').classList.add('long'); // "Together" is wider than a number
-  $('stat-hints').textContent = game.hintsUsed === 0 ? 'None' : game.hintsUsed;
+  $('stat-hints').textContent = game.hintsUsed === 0 ? t('play.none') : game.hintsUsed;
   $('stat-moves').textContent = game.moves;
   showStars(stars);
   $('daily-note').hidden = true;
@@ -103,7 +104,8 @@ export async function finishMatch(match) {
   $('new-medals').replaceChildren();
   const note = $('match-note');
   note.textContent = resultLine(match, details, reply);
-  note.classList.toggle('won', /^You won/.test(note.textContent));
+  const won = match.mode === 'race' ? Boolean(reply && !reply.late) : details?.winner === 'me';
+  note.classList.toggle('won', won);
   note.hidden = false;
   saveToGallery({ timeMs, limitMs: null, beatClock: false, hintsUsed: game.hintsUsed, moves: game.moves, stars });
   app.social.refreshMatches();

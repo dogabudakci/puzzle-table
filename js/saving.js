@@ -7,6 +7,7 @@
 // A new puzzle's first save writes its photo and layout together (saveProgressFull), so the
 // previous save is only replaced once the new one is safely stored.
 
+import { t } from './i18n.js';
 import { saveProgress, saveProgressFull, saveRecovery, clearRecovery } from './library.js';
 
 const RETRY_MS = 15000;
@@ -25,10 +26,10 @@ export function createSaver(statusEl) {
     statusEl.dataset.state = state;
     statusEl.hidden = state === 'idle';
     const label = statusEl.querySelector('span');
-    label.textContent = state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : state === 'error' ? 'Couldn’t save · Retry' : '';
+    label.textContent = state === 'saving' ? t('save.saving') : state === 'saved' ? t('save.saved') : state === 'error' ? t('save.failed') : '';
     statusEl.disabled = state !== 'error';
     statusEl.title = state === 'error'
-      ? 'Your progress couldn’t be saved just now. It will be tried again automatically; click to try now.'
+      ? t('save.failedHelp')
       : '';
     if (state === 'saved') hideTimer = setTimeout(() => show('idle'), SAVED_SHOWN_MS);
   }

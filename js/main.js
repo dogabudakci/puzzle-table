@@ -10,7 +10,7 @@ import { PuzzleGame, MAX_ZOOM } from './game.js';
 import { cutLines, seededRandom } from './cutter.js';
 import { createTablePicker, getTable, tableTextureUrl } from './textures.js';
 import { isSoundOn, setSoundOn } from './effects.js';
-import { startTranslating } from './i18n.js';
+import { t, photoName } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
 import { listPuzzles, clearProgress, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
 import { daySeed, useAccountDays, takeGuestDays } from './daily.js';
@@ -20,7 +20,7 @@ import { playIntro, introWillPlay, INTRO_REVEAL } from './intro.js';
 import { initScrollPieces, initHeroDrift } from './scrollPieces.js';
 import { createPhotoLibrary, fetchLibraryPhoto, loadLibrary } from './photoLibrary.js';
 import { initAccount } from './account.js';
-import { initSocial, MODE_NAMES } from './social.js';
+import { initSocial } from './social.js';
 import { saver, scheduleSave, saveNow, photoBlobs, refreshResume } from './resumeCard.js';
 import { refreshDaily, showDailyDone } from './dailyCard.js';
 import { startMatch, finishMatch, showConnection } from './friendPlay.js';
@@ -28,9 +28,6 @@ import { saveToGallery, showGallery, showGalleryCount } from './galleryScreen.js
 import { starRating, showStars, showPersonalBest, showCompleteCard, hideCompleteCard } from './resultCard.js';
 import { setMusicPanel, isMusicPanelOpen } from './musicPanel.js';
 import { showTipsOnce, closeTips } from './settingsPanel.js';
-
-// Everything on screen in the player's language, including what's added later.
-startTranslating();
 
 const DEFAULT_PIECES = 144;
 const SHARED_TABLE = { width: 1600, height: 1000 };
@@ -76,8 +73,8 @@ async function accountChanged(user) {
   setUser(user);
   social.setUser(user);
   $('privacy-note').lastElementChild.textContent = user
-    ? 'Your puzzles are saved privately to your account.'
-    : 'Your photos stay on this device.';
+    ? t('start.puzzlesAreSavedPrivately')
+    : t('start.photosStayDevice');
   if (user) {
     try {
       const guestDays = takeGuestDays();
@@ -137,7 +134,7 @@ const library = createPhotoLibrary(async (photo) => {
     await handleFile(await fetchLibraryPhoto(photo));
     if (uploadError.hidden) library.select(photo.id);
   } catch {
-    uploadError.textContent = "That photo couldn't be loaded. Try another one.";
+    uploadError.textContent = t('start.photoCouldnLoadedTry');
     uploadError.hidden = false;
   }
 }, () => { $('photo-library').closest('.library').hidden = true; });
@@ -153,9 +150,9 @@ async function startMystery() {
     const pick = (choices.length ? choices : photos)[Math.floor(Math.random() * (choices.length || photos.length))];
     if (!pick) throw new Error('empty library');
     library.select(null);
-    await handleFile(await fetchLibraryPhoto(pick), { mystery: { name: pick.name } });
+    await handleFile(await fetchLibraryPhoto(pick), { mystery: { name: photoName(pick) } });
   } catch {
-    uploadError.textContent = "A mystery photo couldn't be loaded. Try again.";
+    uploadError.textContent = t('start.mysteryPhotoCouldnLoaded');
     uploadError.hidden = false;
   } finally {
     button.disabled = false;
@@ -195,7 +192,7 @@ function showPhoto(photo) {
   const megapixels = (width * height / 1e6).toFixed(1);
 
   $('photo-thumb').src = photo.url;
-  $('photo-name').textContent = state.mystery ? 'Mystery puzzle' : photo.name;
+  $('photo-name').textContent = state.mystery ? t('start.mysteryPuzzle') : photo.name;
   photoInfo.classList.toggle('mystery', Boolean(state.mystery));
   $('mystery-peek-row').hidden = !state.mystery;
   $('photo-res').textContent = `${width} × ${height} px · ${megapixels} MP`;
@@ -278,7 +275,7 @@ function updateSummary() {
     : pieces.pace ? `${pieces.pace} · ${pieces.count}` : `${pieces.count} (${pieces.cols} × ${pieces.rows})`;
   $('sum-table').textContent = ready ? getTable(state.table).name : '–';
   $('sum-timer').textContent = !ready ? '–'
-    : state.timer.mode === 'countdown' ? `Countdown · ${state.timer.minutes} min` : 'Stopwatch';
+    : state.timer.mode === 'countdown' ? t('start.countdownMin', { a: state.timer.minutes }) : t('start.stopwatch');
   startBtn.disabled = !ready;
   drawPreview();
 }
@@ -349,18 +346,18 @@ function showPieceOptions() {
 
 // The calm way to pick a size: each pace maps to the allowed piece count closest to its target.
 const PACES = [
-  { name: 'A quick break', target: 24 },
-  { name: 'Settle in', target: 48 },
-  { name: 'Stay a while', target: 144 },
-  { name: 'Lose yourself', target: 300 },
+  { name: t('start.quickBreak'), target: 24 },
+  { name: t('start.settle'), target: 48 },
+  { name: t('start.stayWhile'), target: 144 },
+  { name: t('start.loseYourself'), target: 300 },
 ];
 
 // Rough solving time for a pace card, e.g. "10 min" or "1 hour".
 function aboutTime(pieceCount) {
   const minutes = suggestedMinutes(pieceCount);
   return minutes >= 60 && minutes % 60 === 0
-    ? `${minutes / 60} ${minutes === 60 ? 'hour' : 'hours'}`
-    : `${minutes} min`;
+    ? (minutes === 60 ? t('start.1Hour') : t('start.hours', { a: minutes / 60 }))
+    : t('start.min', { a: minutes });
 }
 
 let paceInputs = new Map(); // piece count → pace radio
@@ -380,7 +377,7 @@ function showPaces(allowed) {
 
     const label = document.createElement('label');
     label.className = `pace${unavailable ? ' disabled' : ''}`;
-    if (unavailable) label.title = 'Your photo or screen is too small for this many pieces';
+    if (unavailable) label.title = t('start.photoScreenTooSmall');
     const input = document.createElement('input');
     input.type = 'radio';
     input.name = 'pace';
@@ -389,7 +386,7 @@ function showPaces(allowed) {
     const name = document.createElement('strong');
     name.textContent = pace.name;
     const detail = document.createElement('span');
-    detail.textContent = unavailable ? 'Not available here' : `${option.count} pieces · ${aboutTime(option.count)}`;
+    detail.textContent = unavailable ? t('start.notAvailableHere') : `${t('start.pieces2', { a: option.count })} · ${aboutTime(option.count)}`;
     label.append(input, name, detail);
     grid.append(label);
     if (!unavailable) paceInputs.set(option.count, { input, name: pace.name });
@@ -404,7 +401,7 @@ function selectPieces(option) {
   for (const input of document.querySelectorAll('input[name="pace"]')) input.checked = input === pace?.input;
   state.pieces = { count, cols, rows, pieceW, pieceH, pace: pace?.name ?? null };
   $('piece-summary').textContent =
-    `${count} pieces in ${cols} × ${rows}. Each piece shows about ${Math.round(pieceW)} × ${Math.round(pieceH)} px of your photo.`;
+    t('start.pieceSummary', { a: count, b: cols, c: rows, d: Math.round(pieceW), e: Math.round(pieceH) });
   suggestTime(count);
   updateSummary();
 }
@@ -468,7 +465,7 @@ function setMinutes(minutes, updateInput = true) {
 // Called when the piece count changes: suggest a fitting time unless the player picked one.
 function suggestTime(pieceCount) {
   const minutes = suggestedMinutes(pieceCount);
-  $('minutes-hint').textContent = `Suggested for ${pieceCount} pieces: ${minutes} minutes.`;
+  $('minutes-hint').textContent = t('start.suggestedPiecesMinutes', { a: pieceCount, b: minutes });
   if (!state.timer.minutesChosen) setMinutes(minutes);
 }
 
@@ -485,8 +482,8 @@ async function startGame({ restore = null, match = null } = {}) {
   state.pendingSeed = null;
   showScreen(gameScreen);
   showProgress(0);
-  $('game-title').textContent = match ? `${MODE_NAMES[match.mode]} with ${match.friend} · ${state.pieces.count} pieces`
-    : state.mystery ? `Mystery puzzle · ${state.pieces.count} pieces` : `${state.pieces.count}-piece puzzle`;
+  $('game-title').textContent = match ? t(`match.${match.mode}Pieces`, { a: match.friend, b: state.pieces.count })
+    : state.mystery ? t('play.mysteryPuzzlePieces', { a: state.pieces.count }) : t('play.piecePuzzle', { a: state.pieces.count });
   $('reference-img').src = state.photo.url;
   // A mystery puzzle hides the reference picture unless peeking was allowed.
   referenceBtn.hidden = Boolean(state.mystery && !state.mystery.allowPeek);
@@ -544,16 +541,16 @@ async function startGame({ restore = null, match = null } = {}) {
       const mysteryNote = $('mystery-note');
       mysteryNote.hidden = !state.mystery;
       if (state.mystery) {
-        mysteryNote.textContent = `Mystery revealed: ${state.mystery.name}` + (state.peeked ? '' : ' · solved without peeking');
+        mysteryNote.textContent = t('play.mysteryRevealed', { a: state.mystery.name }) + (state.peeked ? '' : ` · ${t('play.solvedWithoutPeeking')}`);
       }
       setPlayControls(false);
       const spare = clock.remaining;
       $('stat-time').textContent = formatTime(clock.elapsed);
       $('stat-pieces').textContent = state.pieces.count;
-      $('stat-extra-label').textContent = spare === null ? 'Table' : 'To spare';
+      $('stat-extra-label').textContent = spare === null ? t('start.table') : t('play.spare');
       $('stat-extra').textContent = spare === null ? getTable(state.table).name : formatTime(spare);
       const { hintsUsed, moves } = state.game;
-      $('stat-hints').textContent = hintsUsed === 0 ? 'None' : hintsUsed;
+      $('stat-hints').textContent = hintsUsed === 0 ? t('play.none') : hintsUsed;
       $('stat-moves').textContent = moves;
       const stars = starRating(state.pieces.count, moves, hintsUsed);
       showStars(stars);
@@ -622,9 +619,9 @@ function leaveGame() {
 }
 
 const MILESTONES = [
-  [25, 'A quarter done. Nice and steady.'],
-  [50, 'Halfway there. Take your time.'],
-  [75, 'Three quarters done. Almost there.'],
+  [25, t('play.quarterDoneNiceSteady')],
+  [50, t('play.halfwayThereTakeTime')],
+  [75, t('play.threeQuartersDoneAlmost')],
 ];
 let milestonesShown = new Set();
 let toastTimer = null;
@@ -633,7 +630,7 @@ function showProgress(share, connected = 0, total = state.pieces?.count ?? 0) {
   const percent = Math.floor(share * 100);
   $('progress-fill').style.width = `${percent}%`;
   $('progress-text').textContent = `${percent}%`;
-  $('progress').title = `${connected} of ${total} pieces connected`;
+  $('progress').title = t('play.piecesConnected', { a: connected, b: total });
 
   if (share === 0) milestonesShown = new Set();
   for (const [at, message] of MILESTONES) {
@@ -710,7 +707,7 @@ edgesBtn.addEventListener('click', () => setEdgesOnly(edgesBtn.getAttribute('ari
 
 function showPauseButton(paused) {
   setIcon(pauseBtn.querySelector('svg'), paused ? 'i-play' : 'i-pause');
-  pauseBtn.title = paused ? 'Resume (P)' : 'Pause (P)';
+  pauseBtn.title = paused ? t('play.resumeP') : t('play.pauseP');
   pauseBtn.setAttribute('aria-label', pauseBtn.title);
 }
 
@@ -718,7 +715,7 @@ function timeUp() {
   state.game.setPaused(true);
   setPlayControls(false);
   const percent = Math.round(state.game.progress() * 100);
-  $('timeup-text').textContent = `You got ${percent}% of the puzzle done. Keep going without the clock, or start over?`;
+  $('timeup-text').textContent = t('play.gotPuzzleDoneKeep', { a: percent });
   timeupCard.hidden = false;
 }
 
@@ -768,7 +765,7 @@ function showSound() {
   const on = isSoundOn();
   setIcon(soundBtn.querySelector('svg'), on ? 'i-sound-on' : 'i-sound-off');
   soundBtn.setAttribute('aria-pressed', String(on));
-  soundBtn.title = on ? 'Sound on' : 'Sound off';
+  soundBtn.title = on ? t('play.sound2') : t('play.soundOff');
 }
 soundBtn.addEventListener('click', () => {
   setSoundOn(!isSoundOn());
@@ -786,7 +783,7 @@ fullscreenBtn.addEventListener('click', toggleFullscreen);
 document.addEventListener('fullscreenchange', () => {
   const on = Boolean(document.fullscreenElement);
   setIcon(fullscreenBtn.querySelector('svg'), on ? 'i-shrink' : 'i-expand');
-  fullscreenBtn.title = on ? 'Exit full screen (F)' : 'Full screen (F)';
+  fullscreenBtn.title = on ? t('play.exitFullScreenF') : t('play.fullScreenF');
 });
 
 // Table switcher

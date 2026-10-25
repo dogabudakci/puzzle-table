@@ -3,7 +3,7 @@
 import { $, app, state, screens } from './app.js';
 import { isSoundOn, setSoundOn, soundVolume, setSoundVolume, testSound } from './effects.js';
 import { showGuide, guideSeen, resetGuide } from './guide.js';
-import { LANGUAGES, currentLanguage, setLanguage } from './i18n.js';
+import { t, LANGUAGES, currentLanguage, setLanguage } from './i18n.js';
 import { createTablePicker } from './textures.js';
 import { musicSettings, setMusicVolume } from './musicPanel.js';
 
@@ -33,13 +33,13 @@ $('set-sound-volume').addEventListener('input', (e) => setSoundVolume(Number(e.t
 $('set-music-volume').addEventListener('input', (e) => setMusicVolume(e.target.value));
 $('set-test-sound').addEventListener('click', async () => {
   const result = $('sound-test-result');
-  result.textContent = 'Playing a short chime…';
+  result.textContent = t('sound.testPlaying');
   const outcome = await testSound();
   result.textContent = outcome.ok
-    ? 'You should hear two soft notes. If not, check the device volume and silent switch.'
+    ? t('sound.testOk')
     : outcome.reason === 'blocked'
-      ? `This browser is holding sound back (${outcome.state}). Tap the page once, then try again.`
-      : 'This browser can’t play sound here.';
+      ? t('sound.testBlocked', { a: outcome.state })
+      : t('sound.testUnsupported');
 });
 
 $('set-guide').addEventListener('click', () => {
@@ -48,7 +48,7 @@ $('set-guide').addEventListener('click', () => {
   if (!screens.game.hidden && state.game) {
     showTips();
   } else {
-    app.social.notice('The tips will show in your next puzzle.');
+    app.social.notice(t('settings.tipsWillShowNext'));
   }
 });
 $('help-btn').addEventListener('click', showTips);

@@ -2,24 +2,25 @@
 // of the table that doesn't stop the player from playing.
 
 import { icon } from './icons.js';
+import { t } from './i18n.js';
 
 const SEEN_KEY = 'puzzle-guide-seen';
 
 const TIPS = [
   {
     icon: 'i-pieces',
-    title: 'Drag the pieces',
-    text: 'Pieces that belong together snap into place when you bring them close. Build the picture on the mat in the middle.',
+    title: t('tips.dragPieces'),
+    text: t('tips.piecesBelongTogetherSnap'),
   },
   {
     icon: 'i-fit',
-    title: 'Zoom in for a closer look',
-    text: 'Pinch, or use the mouse wheel, to zoom. Drag the empty table to look around. The buttons in the corner do the same.',
+    title: t('tips.zoomCloserLook'),
+    text: t('tips.pinchUseMouseWheel'),
   },
   {
     icon: 'i-hint',
-    title: 'A little help',
-    text: 'The bulb shows two pieces that fit. The edge button fades the inner pieces, so the border is easier to find.',
+    title: t('tips.littleHelp'),
+    text: t('tips.bulbShowsTwoPieces'),
   },
 ];
 
@@ -50,7 +51,7 @@ export function showGuide(container) {
   const card = document.createElement('section');
   card.className = 'guide';
   card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Tips');
+  card.setAttribute('aria-label', t('play.tips'));
   let step = 0;
 
   function close() {
@@ -71,7 +72,7 @@ export function showGuide(container) {
     text.textContent = tip.text;
     const dots = document.createElement('span');
     dots.className = 'guide-dots';
-    dots.setAttribute('aria-label', `Tip ${step + 1} of ${TIPS.length}`);
+    dots.setAttribute('aria-label', t('tips.tip', { a: step + 1, b: TIPS.length }));
     for (let i = 0; i < TIPS.length; i++) {
       const dot = document.createElement('i');
       if (i === step) dot.className = 'on';
@@ -80,12 +81,12 @@ export function showGuide(container) {
     const skip = document.createElement('button');
     skip.type = 'button';
     skip.className = 'btn ghost small';
-    skip.textContent = 'Skip';
+    skip.textContent = t('tips.skip');
     skip.addEventListener('click', close);
     const next = document.createElement('button');
     next.type = 'button';
     next.className = 'btn primary small';
-    next.textContent = step === TIPS.length - 1 ? 'Got it' : 'Next';
+    next.textContent = step === TIPS.length - 1 ? t('tips.got') : t('tips.next');
     next.addEventListener('click', () => {
       if (step === TIPS.length - 1) return close();
       step++;

@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // Loading an uploaded photo and judging whether its resolution is good enough for a puzzle.
 
 // Huge camera photos are scaled down to this size; more detail than this isn't visible on screen.
@@ -5,14 +6,14 @@ const MAX_WORKING_SIDE = 2400;
 
 export async function loadImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
-    throw new Error('That file is not an image. Please choose a JPG, PNG or WebP photo.');
+    throw new Error(t('start.fileNotImagePlease'));
   }
 
   const url = URL.createObjectURL(file);
   const img = await new Promise((resolve, reject) => {
     const el = new Image();
     el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error('This image could not be read. Try another photo.'));
+    el.onerror = () => reject(new Error(t('start.imageCouldNotRead')));
     el.src = url;
   });
 
@@ -38,27 +39,27 @@ export function analyzeResolution(width, height) {
   if (shortSide < 300) {
     return {
       level: 'reject',
-      label: 'Too small',
-      message: 'This photo is too small to make a puzzle. Please use one that is at least 300 px on its shorter side.',
+      label: t('start.tooSmall'),
+      message: t('start.photoTooSmallMake'),
     };
   }
   if (shortSide < 800) {
     return {
       level: 'low',
-      label: 'Low resolution',
-      message: 'This will work, but pieces may look blurry. A smaller number of pieces is recommended.',
+      label: t('start.lowResolution'),
+      message: t('start.willWorkButPieces'),
     };
   }
   if (shortSide < 1500) {
     return {
       level: 'good',
-      label: 'Good',
-      message: 'Good resolution. Pieces will look sharp.',
+      label: t('start.good'),
+      message: t('start.goodResolutionPiecesWill'),
     };
   }
   return {
     level: 'excellent',
-    label: 'Excellent',
-    message: 'Excellent resolution. You can make a puzzle with lots of pieces.',
+    label: t('start.excellent'),
+    message: t('start.excellentResolutionMakePuzzle'),
   };
 }

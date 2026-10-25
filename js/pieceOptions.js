@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // Which piece counts make sense for a photo, and how each count is laid out as a grid.
 
 const PIECE_COUNTS = [12, 24, 48, 100, 144, 200, 300, 500];
@@ -40,9 +41,9 @@ export function pieceOptions(width, height, viewW, viewH) {
     const screenPiece = Math.min(screen.width / cols, screen.height / rows);
     let disabledReason = null;
     if (sourcePiece < MIN_SOURCE_PIECE) {
-      disabledReason = 'Photo resolution is too low for this many pieces';
+      disabledReason = t('start.photoResolutionTooLow');
     } else if (screenPiece < MIN_SCREEN_PIECE) {
-      disabledReason = 'Pieces would be too small on this screen';
+      disabledReason = t('start.piecesWouldTooSmall');
     }
 
     options.push({ count, cols, rows, pieceW: width / cols, pieceH: height / rows, disabledReason });

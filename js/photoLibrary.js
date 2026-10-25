@@ -1,3 +1,4 @@
+import { t, photoName } from './i18n.js';
 // Built-in photos the player can puzzle instead of uploading their own.
 // The list comes from assets/library/library.json, which tools/build_library.py writes from the
 // photos dropped into the `library/` folder: each photo has {id}.jpg and a small {id}-thumb.jpg.
@@ -59,7 +60,7 @@ export function createPhotoLibrary(onPick, onEmpty) {
   const wrap = document.createElement('div');
   wrap.className = 'photo-library';
   wrap.setAttribute('role', 'radiogroup');
-  wrap.setAttribute('aria-label', 'Photo library');
+  wrap.setAttribute('aria-label', t('start.photoLibrary'));
   let selected = null;
 
   loadLibrary().then((photos) => {
@@ -73,14 +74,14 @@ export function createPhotoLibrary(onPick, onEmpty) {
       button.className = 'library-photo';
       button.setAttribute('role', 'radio');
       button.setAttribute('aria-checked', String(photo.id === selected));
-      button.setAttribute('aria-label', photo.name);
+      button.setAttribute('aria-label', photoName(photo));
       button.dataset.id = photo.id;
 
       const thumb = document.createElement('img');
       lazyImage(thumb, libraryThumbUrl(photo));
       thumb.alt = '';
       const name = document.createElement('span');
-      name.textContent = photo.name;
+      name.textContent = photoName(photo);
       button.append(thumb, name);
 
       button.addEventListener('click', () => onPick(photo));

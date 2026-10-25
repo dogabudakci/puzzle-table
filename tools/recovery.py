@@ -82,7 +82,7 @@ class Recovery:
 
     def send_verification(self, user_id, email, address):
         if self._limited(email, address):
-            raise AccountError("We've sent a few emails already. Please check your inbox, or try again later.", 429)
+            raise AccountError("We've sent a few emails already. Please check your inbox, or try again later.", 429, code="tooManyEmails")
         with self.connect() as db:
             token = self._new_token(db, user_id, "verify", email, VERIFY_HOURS * 3600)
         link = f"{self.public_url}/#verify={token}"
@@ -99,7 +99,7 @@ class Recovery:
         with self.connect() as db:
             row = self._take_token(db, token, "verify")
             if not row:
-                raise AccountError("This link has expired or was already used. You can send a new one from your account.", 410)
+                raise AccountError("This link has expired or was already used. You can send a new one from your account.", 410, code="linkExpiredResend")
             before = db.execute("SELECT email, email_verified FROM users WHERE id = ?", (row["user_id"],)).fetchone()
             try:
                 db.execute(
@@ -108,7 +108,7 @@ class Recovery:
                     (row["email"], row["email"], row["user_id"]),
                 )
             except self.accounts.database.IntegrityError:
-                raise AccountError("That email now belongs to another account.", 409)
+                raise AccountError("That email now belongs to another account.", 409, code="emailNowTaken")
         # Tell the old confirmed address, so a change nobody asked for doesn't go unnoticed.
         if before and before["email"] and before["email_verified"] and before["email"] != row["email"]:
             mailer.send(before["email"], "Your Puzzle Table email was changed", (
@@ -126,14 +126,14 @@ class Recovery:
         """Adds or changes the account's email. It only takes effect once confirmed from the new inbox."""
         email = (email or "").strip().lower()
         if len(email) > 254 or not EMAIL_RE.match(email):
-            raise AccountError("Please enter a valid email address.")
+            raise AccountError("Please enter a valid email address.", code="invalidEmail")
         with self.connect() as db:
             row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
             if not row or not check_password(password or "", row["password_hash"]):
-                raise AccountError("Your password isn't right.", 401)
+                raise AccountError("Your password isn't right.", 401, code="wrongYourPassword")
             taken = db.execute("SELECT 1 FROM users WHERE email = ? AND id != ?", (email, user_id)).fetchone()
             if taken:
-                raise AccountError("That email belongs to another account.", 409)
+                raise AccountError("That email belongs to another account.", 409, code="emailTaken")
             db.execute("UPDATE users SET pending_email = ? WHERE id = ?", (email, user_id))
         self.send_verification(user_id, email, address)
 
@@ -142,7 +142,7 @@ class Recovery:
             row = db.execute("SELECT email, email_verified, pending_email FROM users WHERE id = ?", (user_id,)).fetchone()
         email = row and (row["pending_email"] or (row["email"] if not row["email_verified"] else None))
         if not email:
-            raise AccountError("There's no email waiting to be confirmed.")
+            raise AccountError("There's no email waiting to be confirmed.", code="noEmailWaiting")
         self.send_verification(user_id, email, address)
 
     # ---------- Password reset ----------
@@ -151,7 +151,7 @@ class Recovery:
         """Always succeeds from the outside; an email only goes out for a confirmed account email."""
         email = (email or "").strip().lower()
         if len(email) > 254 or not EMAIL_RE.match(email):
-            raise AccountError("Please enter a valid email address.")
+            raise AccountError("Please enter a valid email address.", code="invalidEmail")
         if self._limited(email, address):
             return  # same answer as success: don't reveal anything, just don't send more
         with self.connect() as db:
@@ -182,13 +182,13 @@ class Recovery:
                 (token_hash(token), int(time.time())),
             ).fetchone() if valid else None
         if not row:
-            raise AccountError("This link has expired or was already used. Please ask for a new one.", 410)
+            raise AccountError("This link has expired or was already used. Please ask for a new one.", 410, code="linkExpired")
         self.accounts.check_new_password(password, row["email"] or row["username"])
         stored = hash_password(password)
         with self.connect() as db:
             used = db.execute("DELETE FROM tokens WHERE token_hash = ?", (token_hash(token),)).rowcount
             if not used:  # someone used it a moment ago
-                raise AccountError("This link has expired or was already used. Please ask for a new one.", 410)
+                raise AccountError("This link has expired or was already used. Please ask for a new one.", 410, code="linkExpired")
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (stored, row["user_id"]))
             db.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))  # sign out everywhere
             db.execute("DELETE FROM tokens WHERE user_id = ?", (row["user_id"],))

@@ -282,32 +282,32 @@ class LiveGame:
         if (not isinstance(pieces, list) or not 0 < len(pieces) <= self.count
                 or not all(isinstance(p, int) and not isinstance(p, bool) and 0 <= p < self.count for p in pieces)
                 or len(set(pieces)) != len(pieces)):
-            raise AccountError("Invalid move.")
+            raise AccountError("Invalid move.", code="invalidMove")
         return sorted(pieces)
 
     @staticmethod
     def check_position(value):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value) > 4:
-            raise AccountError("Invalid move.")
+            raise AccountError("Invalid move.", code="invalidMove")
         return round(float(value), 5)
 
     def set_layout(self, layout):
         if not isinstance(layout, list) or not layout:
-            raise AccountError("Invalid layout.")
+            raise AccountError("Invalid layout.", code="invalidLayout")
         groups, anchor_of = {}, {}
         for entry in layout:
             if not isinstance(entry, dict):
-                raise AccountError("Invalid layout.")
+                raise AccountError("Invalid layout.", code="invalidLayout")
             pieces = self.check_pieces(entry.get("pieces"))
             if any(p in anchor_of for p in pieces):
-                raise AccountError("Invalid layout.")
+                raise AccountError("Invalid layout.", code="invalidLayout")
             anchor = pieces[0]
             groups[anchor] = {"pieces": pieces, "nx": self.check_position(entry.get("nx")),
                               "ny": self.check_position(entry.get("ny"))}
             for p in pieces:
                 anchor_of[p] = anchor
         if len(anchor_of) != self.count:
-            raise AccountError("Invalid layout.")
+            raise AccountError("Invalid layout.", code="invalidLayout")
         self.groups, self.anchor_of = groups, anchor_of
 
     def layout(self):
@@ -385,7 +385,7 @@ class Social:
     def _limited(self, key, limit):
         limits = self.accounts.limits
         if limits.count(key) >= limit:
-            raise AccountError("That's a lot at once. Please wait a few minutes and try again.", 429)
+            raise AccountError("That's a lot at once. Please wait a few minutes and try again.", 429, code="slowDown")
         limits.add(key)
 
     # ---------- Usernames ----------
@@ -394,16 +394,16 @@ class Social:
         """Players who signed up with an email choose a username before playing with friends."""
         username = (username or "").strip().lower()
         if not USERNAME_RE.match(username):
-            raise AccountError("Usernames are 3–24 characters: letters, numbers, dots, dashes or underscores.")
+            raise AccountError("Usernames are 3–24 characters: letters, numbers, dots, dashes or underscores.", code="usernameRules")
         try:
             with self.connect() as db:
                 changed = db.execute(
                     "UPDATE users SET username = ? WHERE id = ? AND username IS NULL", (username, user_id)
                 ).rowcount
         except self.accounts.database.IntegrityError:
-            raise AccountError("That username is taken. Try another one.", 409)
+            raise AccountError("That username is taken. Try another one.", 409, code="usernameTaken")
         if not changed:
-            raise AccountError("You already have a username.")
+            raise AccountError("You already have a username.", code="hasUsername")
 
     def username(self, db, user_id):
         row = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -483,25 +483,25 @@ class Social:
         self._limited(f"friend:{user_id}", 20)
         username = (username or "").strip().lower().lstrip("@")
         if not USERNAME_RE.match(username):
-            raise AccountError("Please enter your friend's username.")
+            raise AccountError("Please enter your friend's username.", code="enterFriendUsername")
         with self.connect() as db:
             if not self.username(db, user_id):
-                raise AccountError("Choose a username first, so your friend knows who's asking.")
+                raise AccountError("Choose a username first, so your friend knows who's asking.", code="usernameFirst")
             target = db.execute("SELECT id FROM users WHERE username = ? AND suspended = 0", (username,)).fetchone()
             if not target:
-                raise AccountError("No player has that username. Check the spelling with your friend.", 404)
+                raise AccountError("No player has that username. Check the spelling with your friend.", 404, code="noSuchPlayer")
             other = target["id"]
             if other == user_id:
-                raise AccountError("That's your own username.")
+                raise AccountError("That's your own username.", code="ownUsername")
             if self.blocked(db, user_id, other):
-                raise AccountError("You've blocked this player. Unblock them first.", 409)
+                raise AccountError("You've blocked this player. Unblock them first.", 409, code="youBlockedThem")
             if self.blocked(db, other, user_id):
                 return "sent"  # looks the same as usual; they just never see it
             existing = self.friendship(db, user_id, other)
             if existing and existing["status"] == "accepted":
-                raise AccountError("You're already friends.", 409)
+                raise AccountError("You're already friends.", 409, code="alreadyFriends")
             if existing and existing["requester"] == user_id:
-                raise AccountError("You've already asked. Your friend needs to accept.", 409)
+                raise AccountError("You've already asked. Your friend needs to accept.", 409, code="alreadyAsked")
             if existing:  # they asked first: asking back means yes
                 db.execute("UPDATE friendships SET status = 'accepted' WHERE user_a = ? AND user_b = ?", pair(user_id, other))
                 result = "accepted"
@@ -513,7 +513,7 @@ class Social:
                     "SELECT COUNT(*) AS n FROM friendships WHERE requester = ? AND status = 'pending'", (user_id,)
                 ).fetchone()["n"]
                 if counts >= MAX_FRIENDS or pending >= MAX_PENDING_REQUESTS:
-                    raise AccountError("You have too many friends or open requests for now.", 409)
+                    raise AccountError("You have too many friends or open requests for now.", 409, code="tooManyFriends")
                 a, b = pair(user_id, other)
                 db.execute(
                     "INSERT INTO friendships (user_a, user_b, requester, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
@@ -537,10 +537,10 @@ class Social:
     def block(self, user_id, other_id):
         """Blocks a player: ends the friendship (or request) and open games, and keeps them away."""
         if not isinstance(other_id, int) or other_id == user_id:
-            raise AccountError("Invalid request.")
+            raise AccountError("Invalid request.", code="invalidRequest")
         with self.connect() as db:
             if not db.execute("SELECT 1 FROM users WHERE id = ?", (other_id,)).fetchone():
-                raise AccountError("That player doesn't exist.", 404)
+                raise AccountError("That player doesn't exist.", 404, code="playerNotFound")
             if not self.blocked(db, user_id, other_id):
                 db.execute("INSERT INTO blocks (blocker, blocked, created_at) VALUES (?, ?, ?)",
                            (user_id, other_id, int(time.time())))
@@ -548,18 +548,18 @@ class Social:
 
     def unblock(self, user_id, other_id):
         if not isinstance(other_id, int):
-            raise AccountError("Invalid request.")
+            raise AccountError("Invalid request.", code="invalidRequest")
         with self.connect() as db:
             db.execute("DELETE FROM blocks WHERE blocker = ? AND blocked = ?", (user_id, other_id))
 
     def report(self, user_id, other_id, reason, details, block):
         if not isinstance(other_id, int) or other_id == user_id or reason not in REPORT_REASONS:
-            raise AccountError("Please choose what's wrong.")
+            raise AccountError("Please choose what's wrong.", code="chooseReason")
         details = (details if isinstance(details, str) else "").strip()[:1000]
         self._limited(f"report:{user_id}", MAX_REPORTS)
         with self.connect() as db:
             if not self._known(db, user_id, other_id):
-                raise AccountError("You can only report players you've had contact with.", 403)
+                raise AccountError("You can only report players you've had contact with.", 403, code="reportStrangers")
             reporter, reported = self.username(db, user_id), self.username(db, other_id)
             db.execute(
                 "INSERT INTO reports (reporter, reported, reported_name, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -576,11 +576,11 @@ class Social:
 
     def respond_friend(self, user_id, other_id, accept):
         if not isinstance(other_id, int):
-            raise AccountError("Invalid request.")
+            raise AccountError("Invalid request.", code="invalidRequest")
         with self.connect() as db:
             row = self.friendship(db, user_id, other_id)
             if not row or row["status"] != "pending" or row["requester"] != other_id:
-                raise AccountError("That request isn't there any more.", 404)
+                raise AccountError("That request isn't there any more.", 404, code="requestGone")
             if accept:
                 db.execute("UPDATE friendships SET status = 'accepted' WHERE user_a = ? AND user_b = ?", pair(user_id, other_id))
             else:
@@ -590,7 +590,7 @@ class Social:
     def remove_friend(self, user_id, other_id):
         """Removes a friend, or withdraws a request. Their open games end too."""
         if not isinstance(other_id, int):
-            raise AccountError("Invalid request.")
+            raise AccountError("Invalid request.", code="invalidRequest")
         with self.connect() as db:
             db.execute("DELETE FROM friendships WHERE user_a = ? AND user_b = ?", pair(user_id, other_id))
             open_games = db.execute(
@@ -629,15 +629,15 @@ class Social:
     def check_puzzle(self, puzzle, pieces):
         """A puzzle picked for a game: a library photo or an uploaded JPEG, and its grid."""
         if not isinstance(puzzle, dict):
-            raise AccountError("Please pick a photo.")
+            raise AccountError("Please pick a photo.", code="pickPhoto")
         cols, rows = number(puzzle.get("cols"), 0, MAX_GRID, 0), number(puzzle.get("rows"), 0, MAX_GRID, 0)
         if cols < 2 or rows < 2 or cols * rows > MAX_PIECES or abs(cols * rows - pieces) > max(6, pieces * 0.15):
-            raise AccountError("Invalid number of pieces.")
+            raise AccountError("Invalid number of pieces.", code="invalidPieces")
         name = puzzle.get("name") if isinstance(puzzle.get("name"), str) else "Photo"
         library_id = puzzle.get("libraryId")
         if library_id is not None:
             if not isinstance(library_id, str) or not SLUG_RE.match(library_id) or not (LIBRARY_DIR / f"{library_id}.jpg").is_file():
-                raise AccountError("That photo isn't in the library.")
+                raise AccountError("That photo isn't in the library.", code="photoNotInLibrary")
             image = None
         else:
             image = jpeg(puzzle.get("image"), MAX_PUZZLE_IMAGE, "photo")
@@ -656,23 +656,23 @@ class Social:
         mode, picks = body.get("mode"), body.get("picks")
         friend = body.get("friend")
         if mode not in MODES or picks not in PICKS or not isinstance(friend, int):
-            raise AccountError("Invalid game.")
+            raise AccountError("Invalid game.", code="invalidGame")
         if mode == "together":
             picks = "same"
         pieces = number(body.get("pieces"), 4, MAX_PIECES, 0)
         if not pieces:
-            raise AccountError("Invalid number of pieces.")
+            raise AccountError("Invalid number of pieces.", code="invalidPieces")
         puzzle = self.check_puzzle(body.get("puzzle"), pieces)
         match_id = secrets.token_urlsafe(12)
         with self.connect() as db:
             self.expire(db)
             if not self.are_friends(db, user_id, friend):
-                raise AccountError("You can only invite friends.", 403)
+                raise AccountError("You can only invite friends.", 403, code="inviteFriendsOnly")
             open_invites = db.execute(
                 "SELECT COUNT(*) AS n FROM matches WHERE host_id = ? AND status = 'invited'", (user_id,)
             ).fetchone()["n"]
             if open_invites >= MAX_OPEN_INVITES:
-                raise AccountError("You have a lot of open invites. Wait for some answers first.", 409)
+                raise AccountError("You have a lot of open invites. Wait for some answers first.", 409, code="tooManyInvites")
             if puzzle["image"]:
                 check_space(db, user_id, 0, len(puzzle["image"]) * (2 if picks == "same" else 1))
             db.execute(
@@ -696,12 +696,12 @@ class Social:
 
     def _match(self, db, user_id, match_id):
         if not isinstance(match_id, str) or not MATCH_ID_RE.match(match_id):
-            raise AccountError("That game doesn't exist.", 404)
+            raise AccountError("That game doesn't exist.", 404, code="gameNotFound")
         row = db.execute(
             "SELECT * FROM matches WHERE id = ? AND (host_id = ? OR guest_id = ?)", (match_id, user_id, user_id)
         ).fetchone()
         if not row:
-            raise AccountError("That game doesn't exist.", 404)
+            raise AccountError("That game doesn't exist.", 404, code="gameNotFound")
         return row
 
     def respond_match(self, user_id, match_id, accept, puzzle, check_space):
@@ -709,7 +709,7 @@ class Social:
             self.expire(db)
             match = self._match(db, user_id, match_id)
             if match["guest_id"] != user_id or match["status"] != "invited":
-                raise AccountError("This invite isn't open any more.", 409)
+                raise AccountError("This invite isn't open any more.", 409, code="inviteClosed")
             if not accept:
                 self._close(db, match_id, "declined")
             else:
@@ -846,7 +846,7 @@ class Social:
         with self.connect() as db:
             m = self._match(db, user_id, match_id)
             if m["mode"] != "challenge" or m["status"] != "accepted":
-                raise AccountError("This game isn't open.", 409)
+                raise AccountError("This game isn't open.", 409, code="gameClosed")
             db.execute(
                 "UPDATE match_players SET began_at = ? WHERE match_id = ? AND user_id = ? AND began_at IS NULL",
                 (now_ms(), match_id, user_id),
@@ -893,11 +893,11 @@ class Social:
                 return {"late": True}
             started = player["began_at"] if m["mode"] == "challenge" else m["started_at"]
             if not started or started > now_ms():
-                raise AccountError("This game hasn't started yet.", 409)
+                raise AccountError("This game hasn't started yet.", 409, code="gameNotStarted")
             elapsed = now_ms() - started
             solved, count = self._solved(db, m, user_id)
             if not solved or elapsed < count * MIN_MS_PER_PIECE:
-                raise AccountError("The server hasn't seen this puzzle finished yet.", 409)
+                raise AccountError("The server hasn't seen this puzzle finished yet.", 409, code="notSolvedYet")
             db.execute(
                 "UPDATE match_players SET finished_at = ?, time_ms = ?, stars = ?, moves = ?, hints = ?"
                 " WHERE match_id = ? AND user_id = ?",
@@ -920,7 +920,7 @@ class Social:
         with self.connect() as db:
             m = self._match(db, user_id, match_id)
             if m["mode"] == "together" or m["status"] != "accepted":
-                raise AccountError("This game isn't open.", 409)
+                raise AccountError("This game isn't open.", 409, code="gameClosed")
             puzzle = db.execute("SELECT cols, rows FROM match_puzzles WHERE match_id = ? AND player_id = ?",
                                 (match_id, user_id)).fetchone()
             count, cols = puzzle["cols"] * puzzle["rows"], puzzle["cols"]
@@ -928,14 +928,14 @@ class Social:
                                 " WHERE match_id = ? AND user_id = ?", (match_id, user_id)).fetchone()
             started = player["began_at"] if m["mode"] == "challenge" else m["started_at"]
             if not started or started > now_ms() + 500 or player["finished_at"]:
-                raise AccountError("This game isn't open.", 409)
+                raise AccountError("This game isn't open.", 409, code="gameClosed")
             if not isinstance(pieces, list) or not 2 <= len(pieces) <= count or not all(
                     isinstance(p, int) and not isinstance(p, bool) and 0 <= p < count for p in pieces):
-                raise AccountError("Invalid move.")
+                raise AccountError("Invalid move.", code="invalidMove")
             if not connected(pieces, cols):
-                raise AccountError("Invalid move.")
+                raise AccountError("Invalid move.", code="invalidMove")
             if player["last_join"] and now_ms() - player["last_join"] < MIN_MS_BETWEEN_JOINS:
-                raise AccountError("Too many moves at once.", 429)
+                raise AccountError("Too many moves at once.", 429, code="tooManyMoves")
             groups = [set(g) for g in json.loads(player["joins"] or "[]")]
             joined = set(pieces)
             for group in [g for g in groups if g & joined]:  # everything it touches becomes one group
@@ -979,7 +979,7 @@ class Social:
     def _live(self, db, user_id, match_id):
         m = self._match(db, user_id, match_id)
         if m["mode"] == "challenge" or m["status"] != "accepted":
-            raise AccountError("This game isn't open.", 409)
+            raise AccountError("This game isn't open.", 409, code="gameClosed")
         with self.live_lock:
             game = self.live.get(match_id)
             if not game:
@@ -1017,16 +1017,16 @@ class Social:
         other = game.other(user_id)
         with game.lock:
             if not game.allow(user_id):
-                raise AccountError("Too many moves at once.", 429)
+                raise AccountError("Too many moves at once.", 429, code="tooManyMoves")
             if not game.start_at or game.start_at > now_ms() + 500:
-                raise AccountError("The game hasn't started yet.", 409)
+                raise AccountError("The game hasn't started yet.", 409, code="gameNotStartedYet")
             if kind == "react":  # a quick reaction for the friend: one of a few fixed ones
                 reaction = body.get("reaction")
                 if not isinstance(reaction, int) or isinstance(reaction, bool) or not 0 <= reaction < 6:
-                    raise AccountError("Invalid reaction.")
+                    raise AccountError("Invalid reaction.", code="invalidReaction")
                 out, reply = {"type": "react", "reaction": reaction}, {"ok": True}
             elif game.mode == "race":
-                raise AccountError("Invalid move.")  # progress comes from join(), checked by the server
+                raise AccountError("Invalid move.", code="invalidMove")  # progress comes from join(), checked by the server
             elif kind == "grab":
                 reply = game.grab(user_id, body.get("pieces"))
                 out = {"type": "grab", "pieces": game.held_by(user_id)} if reply["ok"] else None
@@ -1046,7 +1046,7 @@ class Social:
                 game.release(user_id)
                 out, reply = {"type": "release"}, {"ok": True}
             else:
-                raise AccountError("Invalid move.")
+                raise AccountError("Invalid move.", code="invalidMove")
             if reply.get("resync") or reply.get("held"):
                 reply["layout"] = game.layout()
                 reply["held"] = game.held_by(other)
