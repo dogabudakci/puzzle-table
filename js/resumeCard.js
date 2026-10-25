@@ -53,6 +53,7 @@ export function saveNow() {
     moves: game.moves,
     hintsUsed: game.hintsUsed,
     layout: game.serialize(),
+    world: game.worldSize,
     progress: game.progress(),
     daily: state.daily,
     mystery: state.mystery,
@@ -99,10 +100,10 @@ function savedAgo(time) {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return t('resume.hAgo', { a: hours });
   const days = Math.round(hours / 24);
-  return days === 1 ? 'yesterday' : t('resume.daysAgo', { a: days });
+  return days === 1 ? t('resume.yesterday') : t('resume.daysAgo', { a: days });
 }
 
-async function continueSaved() {
+export async function continueSaved() {
   const button = $('continue-btn');
   button.disabled = true;
   try {

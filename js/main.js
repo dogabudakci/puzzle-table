@@ -3,7 +3,7 @@
 //   resumeCard.js (saving, Continue), dailyCard.js, friendPlay.js, galleryScreen.js,
 //   resultCard.js (the complete card), musicPanel.js, settingsPanel.js; app.js holds what they share.
 
-import { $, app, state, screens, showScreen } from './app.js';
+import { $, app, state, screens, showScreen, rememberOpenGame, openGameOnLoad } from './app.js';
 import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { pieceOptions } from './pieceOptions.js';
 import { PuzzleGame, MAX_ZOOM } from './game.js';
@@ -12,7 +12,7 @@ import { createTablePicker, getTable, tableTextureUrl } from './textures.js';
 import { isSoundOn, setSoundOn } from './effects.js';
 import { t, photoName } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
-import { listPuzzles, clearProgress, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
+import { listPuzzles, clearProgress, loadProgress, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
 import { daySeed, useAccountDays, takeGuestDays } from './daily.js';
 import { setIcon } from './icons.js';
 import { initHero } from './hero.js';
@@ -21,7 +21,7 @@ import { initScrollPieces, initHeroDrift } from './scrollPieces.js';
 import { createPhotoLibrary, fetchLibraryPhoto, loadLibrary } from './photoLibrary.js';
 import { initAccount } from './account.js';
 import { initSocial } from './social.js';
-import { saver, scheduleSave, saveNow, photoBlobs, refreshResume } from './resumeCard.js';
+import { saver, scheduleSave, saveNow, photoBlobs, refreshResume, continueSaved } from './resumeCard.js';
 import { refreshDaily, showDailyDone } from './dailyCard.js';
 import { startMatch, finishMatch, showConnection } from './friendPlay.js';
 import { saveToGallery, showGallery, showGalleryCount } from './galleryScreen.js';
@@ -54,6 +54,13 @@ const edgesBtn = $('edges-btn');
 
 const scrollToSteps = () => $('setup-main').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+
+// A reload during a game goes straight back to it (once the account is known), without the intro.
+const openOnLoad = openGameOnLoad();
+let reopening = openOnLoad;
+const intro = introWillPlay() && !openOnLoad;
+// The page stays hidden while the game opens; shown after a while whatever happens.
+if (openOnLoad) setTimeout(() => document.documentElement.classList.remove('intro-pending'), 8000);
 
 const account = initAccount({ onChange: accountChanged });
 const social = initSocial({
@@ -89,22 +96,39 @@ async function accountChanged(user) {
   }
   refreshResume();
   refreshDaily();
+  if (reopening) reopenGame(reopening);
+  reopening = null;
   listPuzzles().then((puzzles) => showGalleryCount(puzzles.length), () => showGalleryCount(0));
   if (!galleryScreen.hidden) showGallery();
 }
 
+async function reopenGame(open) {
+  rememberOpenGame(null); // remembered again once the game is open, so a failure isn't retried
+  try {
+    if (open.kind === 'match') {
+      await startMatch(open.id);
+    } else {
+      const saved = await loadProgress().catch(() => null);
+      // Only the same puzzle: one closed before its first save leaves an older one there.
+      if (saved?.seed === open.seed) await continueSaved();
+    }
+  } finally {
+    document.documentElement.classList.remove('intro-pending'); // the page was kept hidden till now
+  }
+}
+
 // The opening animation plays first; the hanging frames drop in as it clears.
-initHero($('hero-cards'), $('hero-ghosts'), { delay: introWillPlay() ? INTRO_REVEAL : 0 });
+initHero($('hero-cards'), $('hero-ghosts'), { delay: intro ? INTRO_REVEAL : 0 });
 // The heading lines come in slowly, one after another, as the frames drop in.
-if (introWillPlay()) {
+if (intro) {
   gsap.from('.hero > *', {
     autoAlpha: 0, y: 26, duration: 1.8, stagger: 0.45, delay: INTRO_REVEAL + 0.4, ease: 'power2.out',
   });
 }
-playIntro();
+if (!openOnLoad) playIntro();
 initScrollPieces(() => !setupScreen.hidden); // small pieces fall down the margins while scrolling
 // The rising pieces start once the frames have dropped in (about 2 s), one by one.
-initHeroDrift($('hero-drift'), () => !setupScreen.hidden, { delay: (introWillPlay() ? INTRO_REVEAL : 0) + 2 });
+initHeroDrift($('hero-drift'), () => !setupScreen.hidden, { delay: (intro ? INTRO_REVEAL : 0) + 2 });
 
 /* ---------- Step 1: upload ---------- */
 
@@ -473,6 +497,13 @@ function suggestTime(pieceCount) {
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
+// The table size a saved game was played on, if it looks right.
+function savedWorld(saved) {
+  const { width, height } = saved?.world ?? {};
+  const fine = (n) => Number.isFinite(n) && n >= 200 && n <= 10000;
+  return fine(width) && fine(height) ? { width, height } : null;
+}
+
 // restore: a saved game from loadProgress(), to pick up where the player left off.
 // match: a MatchSession when playing with a friend.
 async function startGame({ restore = null, match = null } = {}) {
@@ -480,6 +511,7 @@ async function startGame({ restore = null, match = null } = {}) {
   state.match = match;
   state.seed = restore?.seed ?? state.pendingSeed ?? Math.floor(Math.random() * 2 ** 31);
   state.pendingSeed = null;
+  rememberOpenGame(match ? { kind: 'match', id: match.id } : { kind: 'saved', seed: state.seed });
   showScreen(gameScreen);
   showProgress(0);
   $('game-title').textContent = match ? t(`match.${match.mode}Pieces`, { a: match.friend, b: state.pieces.count })
@@ -512,7 +544,8 @@ async function startGame({ restore = null, match = null } = {}) {
     autoPouch: Boolean(match?.live), // live games: the pouch opens for both at "Go!"
     shared: match?.mode === 'together' ? match.sharedHooks() : null,
     // Playing together, both screens show the same table: a fixed 16:10 one, scaled to fit.
-    worldSize: match?.mode === 'together' ? SHARED_TABLE : null,
+    // A continued game gets back the table it was saved on (older saves: this screen's).
+    worldSize: match?.mode === 'together' ? SHARED_TABLE : savedWorld(restore),
     onChange: match ? null : scheduleSave, // games with friends aren't saved for later
     onZoom: showZoom,
     announce: (text) => { $('announcer').textContent = text; },
@@ -532,6 +565,7 @@ async function startGame({ restore = null, match = null } = {}) {
     onProgress: showProgress,
     onJoin: match ? (pieces) => match.reportJoin(pieces) : null,
     onComplete: () => {
+      rememberOpenGame(null);
       if (match) return finishMatch(match);
       const { clock } = state;
       clock.pause();
@@ -611,6 +645,7 @@ function stopGame() {
 }
 
 function leaveGame() {
+  rememberOpenGame(null);
   saveNow().finally(refreshResume);
   stopGame();
   if (document.fullscreenElement) document.exitFullscreen();

@@ -109,6 +109,16 @@ function copyPiece(source, size) {
   return el;
 }
 
+let scrollLayer = null;
+
+// Takes away the pieces still falling, e.g. when a game starts: the layer lies over the whole
+// page, and the start page's animations are paused while playing, which would freeze them.
+export function clearScrollPieces() {
+  if (!scrollLayer) return;
+  window.gsap?.killTweensOf([...scrollLayer.children]);
+  scrollLayer.replaceChildren();
+}
+
 export async function initScrollPieces(isActive) {
   const gsap = window.gsap;
   if (!gsap || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -119,14 +129,14 @@ export async function initScrollPieces(isActive) {
   layer.className = 'scroll-pieces';
   layer.setAttribute('aria-hidden', 'true');
   document.body.append(layer);
+  scrollLayer = layer;
 
   let lastY = scrollY;
   let travelled = 0;
   let side = 0;
-  let onScreen = 0;
 
   function spawn(direction, speed) {
-    if (onScreen >= SCROLL_PIECES.maxOnScreen) return;
+    if (layer.childElementCount >= SCROLL_PIECES.maxOnScreen) return;
     const source = pool[Math.floor(Math.random() * pool.length)];
     const el = copyPiece(source, rand(...SCROLL_PIECES.size));
     const w = parseFloat(el.style.width);
@@ -138,7 +148,6 @@ export async function initScrollPieces(isActive) {
     const left = side++ % 2 === 0 ? x : innerWidth - x - w;
     el.style.left = `${left}px`;
     layer.append(el);
-    onScreen++;
 
     // Falling down (scrolling down) or rising (scrolling up), drifting and turning a little.
     const fromY = direction > 0 ? -h - 20 : innerHeight + 20;
@@ -151,7 +160,7 @@ export async function initScrollPieces(isActive) {
       rotation: `+=${rand(120, 300) * (Math.random() < 0.5 ? -1 : 1)}`,
       rotationX: rand(-50, 50), rotationY: rand(-50, 50),
       duration, ease: direction > 0 ? 'power1.in' : 'power1.out',
-      onComplete: () => { el.remove(); onScreen--; },
+      onComplete: () => el.remove(),
     });
   }
 

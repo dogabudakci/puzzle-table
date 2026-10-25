@@ -5,6 +5,7 @@
 
 import { DEFAULT_TABLE, getTable } from './textures.js';
 import { setHeroRunning } from './hero.js';
+import { clearScrollPieces } from './scrollPieces.js';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -28,6 +29,7 @@ export const screens = { setup: $('setup'), game: $('game'), gallery: $('gallery
 export function showScreen(screen) {
   for (const s of Object.values(screens)) s.hidden = s !== screen;
   setHeroRunning(screen === screens.setup); // the floating cards rest while out of sight
+  if (screen !== screens.setup) clearScrollPieces();
 }
 
 // Filled in by main.js: startGame, stopGame, leaveGame, showToast, setPlayControls, showPhoto,
@@ -40,6 +42,27 @@ function savedTable() {
     return id && getTable(id).id === id ? id : DEFAULT_TABLE;
   } catch {
     return DEFAULT_TABLE;
+  }
+}
+
+// The game open in this tab, so that reloading the page goes straight back to it:
+// { kind: 'saved', seed } for a puzzle saved for later, { kind: 'match', id } for one with a friend.
+const OPEN_GAME_KEY = 'puzzle-open-game';
+
+export function rememberOpenGame(game) {
+  try {
+    if (game) sessionStorage.setItem(OPEN_GAME_KEY, JSON.stringify(game));
+    else sessionStorage.removeItem(OPEN_GAME_KEY);
+  } catch {
+    // Storage unavailable: a reload shows the start page.
+  }
+}
+
+export function openGameOnLoad() {
+  try {
+    return JSON.parse(sessionStorage.getItem(OPEN_GAME_KEY));
+  } catch {
+    return null;
   }
 }
 

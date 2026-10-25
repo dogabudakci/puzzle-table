@@ -37,20 +37,19 @@ export class PuzzleGame {
   // onZoom(zoom): the view's zoom changed (1 = the whole table).
   // onJoin(pieces): pieces just joined into one group (reported to the server in races and challenges).
   // announce(text): something happened that a screen reader should say (keyboard play).
-  // worldSize: { width, height } for a table of fixed size (a shared one); otherwise it's the screen's.
+  // worldSize: { width, height } of the table. It stays that size for the whole game (and in its
+  // save), whatever the window does: a different window only scales the view. Default: the screen's.
   constructor(tableEl, photo, { cols, rows }, tableId, {
     onSpill, onProgress, onComplete, onChange, onZoom, onJoin, announce, seed, restore, autoPouch = false, shared = null, worldSize = null,
   } = {}) {
     this.table = tableEl;
     this.world = document.createElement('div');
     this.world.className = 'world';
-    this.fixedWorld = worldSize;
-    if (worldSize) {
-      this.world.classList.add('fixed');
-      this.world.style.width = `${worldSize.width}px`;
-      this.world.style.height = `${worldSize.height}px`;
-    }
     this.table.append(this.world);
+    this.worldSize = worldSize ?? { width: this.table.clientWidth, height: this.table.clientHeight };
+    this.world.classList.add('fixed');
+    this.world.style.width = `${this.worldSize.width}px`;
+    this.world.style.height = `${this.worldSize.height}px`;
     this.view = { x: 0, y: 0, zoom: 1 };
     this.onZoom = onZoom;
     this.onJoin = onJoin;
@@ -125,21 +124,18 @@ export class PuzzleGame {
     for (const [type, fn] of Object.entries(this.handlers)) {
       this.table.addEventListener(type, fn, type === 'wheel' ? { passive: false } : undefined);
     }
-    this.onResize = () => {
-      this.placeMat();
-      for (const group of this.groups) this.placeGroup(group, group.x, group.y);
-      this.setView(this.view.x, this.view.y, Math.max(this.view.zoom, this.fitZoom()));
-    };
+    // The table keeps its size; a resized window just shows it bigger or smaller.
+    this.onResize = () => this.setView(this.view.x, this.view.y, Math.max(this.view.zoom, this.fitZoom()));
     window.addEventListener('resize', this.onResize);
     this.setView(0, 0, this.fitZoom());
   }
 
   get worldWidth() {
-    return this.fixedWorld?.width ?? this.table.clientWidth;
+    return this.worldSize.width;
   }
 
   get worldHeight() {
-    return this.fixedWorld?.height ?? this.table.clientHeight;
+    return this.worldSize.height;
   }
 
   addGroup(pieces) {
@@ -592,9 +588,8 @@ export class PuzzleGame {
     return { x: (clientX - rect.left - x) / zoom, y: (clientY - rect.top - y) / zoom };
   }
 
-  // The zoom at which the whole table just fits on screen (1, unless the table has a fixed size).
+  // The zoom at which the whole table just fits on screen (1 in the window the game started in).
   fitZoom() {
-    if (!this.fixedWorld) return 1;
     return Math.min(this.table.clientWidth / this.worldWidth, this.table.clientHeight / this.worldHeight);
   }
 
@@ -1165,6 +1160,7 @@ export class PuzzleGame {
     this.tableId = id;
     // Show the surface's main colour right away; the detailed texture follows once drawn.
     this.table.style.backgroundColor = getTable(id).color;
+    this.world.style.backgroundColor = getTable(id).color;
     const url = await tableTextureUrl(id);
     if (this.tableId !== id) return;
     // On the world, so the table's grain moves and grows with the pieces when zooming.

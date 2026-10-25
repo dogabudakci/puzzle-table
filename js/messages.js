@@ -99,6 +99,7 @@ export const MESSAGES = {
   // ----- Continue a puzzle -----
   'resume.played': ['{a} played', '{a} oynandı', '{a} gespielt'],
   'resume.justNow': ['just now', 'az önce', 'gerade eben'],
+  'resume.yesterday': ['yesterday', 'dün', 'gestern'],
   'resume.minAgo': ['{a} min ago', '{a} dk önce', 'vor {a} Min.'],
   'resume.hAgo': ['{a} h ago', '{a} sa önce', 'vor {a} Std.'],
   'resume.daysAgo': ['{a} days ago', '{a} gün önce', 'vor {a} Tagen'],
