@@ -1,7 +1,7 @@
 // Background music, generated live with Web Audio: no audio files, nothing downloaded,
 // and no licences to worry about. Each mood is a small generative piece that never repeats exactly.
 
-import { getAudioContext, resumeAudio } from './audio.js';
+import { getAudioContext, resumeAudio, onAudioRestart } from './audio.js';
 import { t } from './i18n.js';
 
 const SETTINGS_KEY = 'puzzle-music';
@@ -13,6 +13,7 @@ let reverb = null;
 let noise = null;
 let current = null; // { id, stop }
 let playRequest = 0;
+let lastVolume = 0.6;
 
 /* ---------- Settings ---------- */
 
@@ -69,6 +70,7 @@ function impulse(seconds, decay) {
 }
 
 export function setVolume(volume) {
+  lastVolume = volume;
   if (master) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
 }
 
@@ -456,3 +458,16 @@ export function stopMusic() {
 export function playingMood() {
   return current?.id ?? null;
 }
+
+// The sound was stuck and runs on a new context now: the mood playing goes on there.
+onAudioRestart(() => {
+  const id = current?.id;
+  if (!id) return;
+  try {
+    current.stop();
+  } catch {
+    // Its old context is closed already; there's nothing left to fade.
+  }
+  current = null;
+  playMood(id, lastVolume).catch((error) => console.warn('Puzzle music could not start again:', error));
+});

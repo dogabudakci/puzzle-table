@@ -102,8 +102,13 @@ with sync_playwright() as pw:
     ann.click("#table .pouch")
     ann.wait_for_function("!document.querySelector('#table .pouch') && document.querySelectorAll('#table .group').length === 24", timeout=15000)
     time.sleep(2.5)  # the pieces can be picked up once they've all landed
-    check(place(ann, 0) and place(ann, 1), "dragging pieces works in WebKit")
-    check(1 in ann.evaluate(GROUP_OF, 0), "pieces snap together in WebKit")
+    # Two side-by-side pieces that aren't lying under others after the spill.
+    cols = ann.evaluate("""() => { const top = document.querySelector('#table .piece[data-index="0"]').style.top;
+      return [...document.querySelectorAll('#table .piece')].filter((c) => c.style.top === top).length; }""")
+    pair = next(((a, a + 1) for a in range(23) if a % cols != cols - 1
+                 and ann.evaluate(TO_PLACE, a) and ann.evaluate(TO_PLACE, a + 1)), None)
+    check(pair and place(ann, pair[0]) and place(ann, pair[1]), f"dragging pieces works in WebKit {pair}")
+    check(pair[1] in ann.evaluate(GROUP_OF, pair[0]), "pieces snap together in WebKit")
     ann.mouse.move(700, 450)
     ann.mouse.wheel(0, -300)
     time.sleep(0.5)

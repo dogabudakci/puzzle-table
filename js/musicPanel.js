@@ -39,6 +39,16 @@ function renderMoods() {
   }));
 }
 
+// On iPhone, music the player chose to play keeps playing with the silent switch on (as in a
+// music app); without music, sound effects follow the switch like any game's. (Safari 17+.)
+function setAudioSession(type) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = type;
+  } catch {
+    // Not supported here.
+  }
+}
+
 function isMusicPlaying() {
   return musicStarting || Boolean(playingMood()) || !ownAudio.paused;
 }
@@ -49,6 +59,7 @@ async function playMusic(source) {
   stopMusic();
   ownAudio.pause();
   musicStarting = true;
+  setAudioSession('playback');
   try {
     let playback;
     if (source === 'own' && ownTracks.length) {
@@ -70,6 +81,7 @@ async function playMusic(source) {
     musicStarting = false;
     stopMusic();
     ownAudio.pause();
+    setAudioSession('auto');
     showMusicState();
     $('music-now').textContent = /timed out/.test(error?.message)
       ? t('music.didNotStart')
@@ -83,6 +95,7 @@ function pauseMusic() {
   musicStarting = false;
   stopMusic();
   ownAudio.pause();
+  setAudioSession('auto');
   showMusicState();
 }
 
