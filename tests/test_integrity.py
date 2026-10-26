@@ -94,15 +94,23 @@ check(b.call("gallery/add", {"uid": "g3", "puzzle": {}, "image": base64.b64encod
 # ---------- Saves from an older tab ----------
 photo = base64.b64encode(jpeg(4000)).decode()
 check(b.call("progress/full", {"photo": photo, "thumb": photo, "progress": {"gameId": "new", "layout": []}})[0] == 200, "new puzzle saved")
-s, d = b.call("progress", {"progress": {"gameId": "old", "layout": [1]}})
+s, d = b.call("progress", {"progress": {"gameId": "old", "layout": [{"pieces": [1], "nx": 0.1, "ny": 0.5}]}})
 check(s == 409 and d["code"] == "saveReplaced", "an older puzzle's layout can't overwrite the newer one")
 check(b.call("progress")[1]["progress"]["gameId"] == "new", "the newer one is untouched")
-check(b.call("progress", {"progress": {"gameId": "new", "layout": [2]}})[0] == 200, "its own saves still work")
+check(b.call("progress", {"progress": {"gameId": "new", "layout": [{"pieces": [2], "nx": 0.2, "ny": 0.5}]}})[0] == 200, "its own saves still work")
 b.call("progress/clear", {"gameId": "old"})
 check(b.call("progress")[1]["progress"] is not None, "finishing the old puzzle doesn't remove the newer one")
 b.call("progress/clear", {"gameId": "new"})
 check(b.call("progress")[1]["progress"] is None, "finishing the newer one does")
-check(b.call("progress", {"progress": {"gameId": "new", "layout": [3]}})[0] == 409, "and no layout comes back without its photo")
+check(b.call("progress", {"progress": {"gameId": "new", "layout": [{"pieces": [3], "nx": 0.3, "ny": 0.5}]}})[0] == 409, "and no layout comes back without its photo")
+
+# ---------- Values of the wrong kind get a clear answer, not a server error ----------
+check(b.call("progress", {"progress": {"gameId": "x", "layout": [{"pieces": ["one"], "nx": 0, "ny": 0}]}})[0] == 400,
+      "a layout with pieces that aren't numbers is refused")
+check(b.call("progress", {"progress": {"layout": [{"pieces": [1], "nx": "left", "ny": 0}]}})[0] == 400,
+      "so is a position that isn't a number")
+s1, d1 = b.call("friends/request", {"username": 12345})
+check(s1 == 400, f"a number where a name belongs is a 400, not a 500 ({s1})")
 
 # ---------- Game photos count towards the sender's storage ----------
 c = Player()

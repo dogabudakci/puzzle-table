@@ -107,19 +107,27 @@ def restore(path):
     return data, database
 
 
+def fingerprint(rows):
+    """The rows of a table as a sorted list of their contents, to compare two copies of it."""
+    return sorted(json.dumps({k: encode(v) for k, v in dict(r).items()}, sort_keys=True) for r in rows)
+
+
 def verify(path):
-    """Restores into an empty database and checks each table has exactly the rows of the backup."""
+    """Restores into an empty database and checks each table came back with exactly the rows of the
+    backup: the same number, and every value the same."""
     data, database = restore(path)
     problems = []
     with database.connect() as db:
         for table in TABLES:
-            expected = len(data["tables"].get(table, []))
-            found = db.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
-            if found != expected:
-                problems.append(f"{table}: {found} rows, expected {expected}")
+            expected = data["tables"].get(table, [])
+            found = db.execute(f"SELECT * FROM {table}").fetchall()
+            if len(found) != len(expected):
+                problems.append(f"{table}: {len(found)} rows, expected {len(expected)}")
+            elif fingerprint(found) != sorted(json.dumps(row, sort_keys=True) for row in expected):
+                problems.append(f"{table}: the rows came back different")
     if problems:
         raise SystemExit("Restore check FAILED: " + "; ".join(problems))
-    print("Restore check passed: every table came back complete.")
+    print("Restore check passed: every table came back complete and unchanged.")
 
 
 if __name__ == "__main__":

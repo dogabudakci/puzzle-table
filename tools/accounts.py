@@ -108,7 +108,13 @@ class RateLimiter:
         now = time.time()
         with self.lock:
             recent = [t for t in self.events.get(key, []) if now - t < WINDOW]
-            self.events[key] = recent
+            if recent:
+                self.events[key] = recent
+            else:
+                self.events.pop(key, None)  # nothing recent: forget the key, so memory doesn't grow
+            if len(self.events) > 10000:  # now and then, drop every key with nothing recent
+                for k in [k for k, times in self.events.items() if not times or now - times[-1] >= WINDOW]:
+                    del self.events[k]
             return len(recent)
 
     def add(self, key):

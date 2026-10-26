@@ -146,7 +146,8 @@ export async function moveGuestDataToAccount() {
   }
   const saved = await local.loadProgress();
   if (saved) {
-    const theirs = await api('progress').then((r) => r.progress, () => null);
+    // A failed read stops here (the guest save stays for the next sign-in); it isn't "no save".
+    const { progress: theirs } = await api('progress');
     if (!theirs || (theirs.savedAt ?? 0) < (saved.savedAt ?? 0)) {
       const { photo, id, ...meta } = saved;
       await uploadProgressFull(photo, meta);
@@ -311,6 +312,11 @@ export async function addAccountDays(days) {
 }
 
 // The time for today's puzzle, for the friends' ranking (signed in only).
+// The day's puzzle has begun: the server notes when, so the time it ranks is one it saw pass.
+export async function startDailyAttempt(day) {
+  if (user) await api('daily/start', { day });
+}
+
 export async function saveDailyResult(day, timeMs, moves) {
   if (user) await api('daily/result', { day, timeMs, moves });
 }

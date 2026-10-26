@@ -109,6 +109,7 @@ export function createSaver(statusEl) {
       show('idle');
     },
 
-    hasUnsaved: () => Boolean(pending) || statusEl.dataset.state === 'error',
+    // Also while a save is on its way (its record has left `pending` but isn't stored yet).
+    hasUnsaved: () => Boolean(pending || running) || statusEl.dataset.state === 'error',
   };
 }

@@ -13,6 +13,7 @@ Security choices:
 
 import base64
 import json
+import math
 import os
 import re
 import time
@@ -152,6 +153,9 @@ class UserData:
         accounts.database.script(SCHEMA)
         accounts.database.add_column("daily", "time_ms", "INTEGER")  # best time, for friends' daily ranking
         accounts.database.add_column("daily", "moves", "INTEGER")
+        # When the server saw the day's puzzle begin, so a ranked time can't be shorter than that.
+        accounts.database.add_column("daily", "started_at", "INTEGER")
+        accounts.database.add_column("daily", "done", "INTEGER NOT NULL DEFAULT 1")  # 0: begun, not finished
 
     def connect(self):
         return self.accounts.connect()
@@ -235,7 +239,7 @@ class UserData:
 
     def list_days(self, user_id):
         with self.connect() as db:
-            return [r["day"] for r in db.execute("SELECT day FROM daily WHERE user_id = ? ORDER BY day", (user_id,))]
+            return [r["day"] for r in db.execute("SELECT day FROM daily WHERE user_id = ? AND done = 1 ORDER BY day", (user_id,))]
 
     def add_days(self, user_id, days):
         if not isinstance(days, list) or len(days) > MAX_DAYS:
@@ -243,28 +247,48 @@ class UserData:
         with self.connect() as db:
             for day in days:
                 if isinstance(day, str) and DAY_RE.match(day):
-                    db.execute("INSERT INTO daily (user_id, day) VALUES (?, ?) ON CONFLICT DO NOTHING", (user_id, day))
+                    db.execute("INSERT INTO daily (user_id, day) VALUES (?, ?)"
+                               " ON CONFLICT (user_id, day) DO UPDATE SET done = 1", (user_id, day))
 
-    def daily_result(self, user_id, day, time_ms, moves):
-        """Keeps the player's best time for a day's puzzle (it must be "today" somewhere in the world)."""
+    @staticmethod
+    def _today(day):
         if not isinstance(day, str) or not DAY_RE.match(day):
             raise AccountError("Invalid day.", code="invalidDay")
         nearby = {time.strftime("%Y-%m-%d", time.gmtime(time.time() + shift * 86400)) for shift in (-1, 0, 1)}
-        if day not in nearby:
+        if day not in nearby:  # "today" somewhere in the world
             raise AccountError("That's not today's puzzle.", code="notToday")
-        # The time is the player's own clock: anything under 20 seconds isn't a real solve.
-        if isinstance(time_ms, bool) or not isinstance(time_ms, (int, float)) or not 20000 <= time_ms <= 24 * 3600 * 1000:
+
+    def daily_start(self, user_id, day):
+        """The day's puzzle has begun (its pieces came out): the first time counts."""
+        self._today(day)
+        with self.connect() as db:
+            db.execute("INSERT INTO daily (user_id, day, started_at, done) VALUES (?, ?, ?, 0)"
+                       " ON CONFLICT (user_id, day) DO UPDATE SET"
+                       " started_at = COALESCE(daily.started_at, excluded.started_at)",
+                       (user_id, day, int(time.time() * 1000)))
+
+    def daily_result(self, user_id, day, time_ms, moves):
+        """Marks the day done and keeps the player's best time for its ranking. A time only ranks
+        when the server saw the puzzle begin, and it can't be shorter than 20 seconds or than the
+        time since then allows (the player's clock may be less: pauses don't count)."""
+        self._today(day)
+        if isinstance(time_ms, bool) or not isinstance(time_ms, (int, float)) or not 0 <= time_ms <= 24 * 3600 * 1000:
             raise AccountError("Invalid time.", code="invalidTime")
-        time_ms = int(time_ms)
         moves = number(moves, 0, 10 ** 6, 0)
         with self.connect() as db:
+            row = db.execute("SELECT started_at FROM daily WHERE user_id = ? AND day = ?", (user_id, day)).fetchone()
+            since = int(time.time() * 1000) - row["started_at"] if row and row["started_at"] else None
+            ranked = since is not None and 20000 <= time_ms <= since + 5000
             db.execute(
                 "INSERT INTO daily (user_id, day, time_ms, moves) VALUES (?, ?, ?, ?)"
-                " ON CONFLICT (user_id, day) DO UPDATE SET"
-                " moves = CASE WHEN daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms THEN excluded.moves ELSE daily.moves END,"
-                " time_ms = CASE WHEN daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms THEN excluded.time_ms ELSE daily.time_ms END",
-                (user_id, day, time_ms, moves),
+                " ON CONFLICT (user_id, day) DO UPDATE SET done = 1,"
+                " moves = CASE WHEN excluded.time_ms IS NOT NULL AND (daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms)"
+                " THEN excluded.moves ELSE daily.moves END,"
+                " time_ms = CASE WHEN excluded.time_ms IS NOT NULL AND (daily.time_ms IS NULL OR excluded.time_ms < daily.time_ms)"
+                " THEN excluded.time_ms ELSE daily.time_ms END",
+                (user_id, day, int(time_ms) if ranked else None, moves),
             )
+        return {"ranked": ranked}
 
     # ---------- Unfinished puzzle ----------
 
@@ -276,6 +300,28 @@ class UserData:
         if not row or not row["has_photo"] or row["meta"] == "{}":  # no layout saved yet
             return None
         return json.loads(row["meta"])
+
+    @staticmethod
+    def check_progress(meta):
+        """An unfinished puzzle's details: an object whose layout (if any) is a list of groups, each
+        with its pieces' numbers and a position made of real numbers."""
+        if not isinstance(meta, dict):
+            raise AccountError("Invalid save.", code="invalidSave")
+        layout = meta.get("layout", [])
+        if not isinstance(layout, list) or len(layout) > 10000:
+            raise AccountError("Invalid save.", code="invalidSave")
+        for group in layout:
+            pieces = group.get("pieces") if isinstance(group, dict) else None
+            if (not isinstance(pieces, list) or not all(isinstance(p, int) and not isinstance(p, bool) and 0 <= p < 10000 for p in pieces)
+                    or not all(isinstance(group.get(k), (int, float)) and not isinstance(group.get(k), bool)
+                               and math.isfinite(group.get(k)) for k in ("nx", "ny"))):
+                raise AccountError("Invalid save.", code="invalidSave")
+        if "gameId" in meta and not (isinstance(meta["gameId"], str) and len(meta["gameId"]) <= 80):
+            raise AccountError("Invalid save.", code="invalidSave")
+        encoded = json.dumps(meta)
+        if len(encoded) > MAX_PROGRESS_JSON:
+            raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
+        return encoded
 
     @staticmethod
     def _same_game(row, meta):
@@ -292,11 +338,7 @@ class UserData:
 
     def save_progress(self, user_id, meta):
         """A later save of the puzzle that's stored: just its layout and clock."""
-        if not isinstance(meta, dict):
-            raise AccountError("Invalid save.", code="invalidSave")
-        encoded = json.dumps(meta)
-        if len(encoded) > MAX_PROGRESS_JSON:
-            raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
+        encoded = self.check_progress(meta)
         with self.connect() as db:
             if not self._same_game(self._current(db, user_id), meta):
                 raise AccountError("Another puzzle has been saved since, so this one wasn't.", 409, code="saveReplaced")
@@ -308,11 +350,7 @@ class UserData:
         photo = jpeg(body.get("photo"), MAX_PROGRESS_PHOTO, "photo")
         thumb = jpeg(body.get("thumb"), 512 * 1024, "thumbnail")
         meta = body.get("progress")
-        if not isinstance(meta, dict):
-            raise AccountError("Invalid save.", code="invalidSave")
-        encoded = json.dumps(meta)
-        if len(encoded) > MAX_PROGRESS_JSON:
-            raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
+        encoded = self.check_progress(meta)
         with self.connect() as db:
             old = db.execute("SELECT LENGTH(photo) + LENGTH(thumb) AS size FROM progress WHERE user_id = ?", (user_id,)).fetchone()
             self.check_space(db, user_id, int((old["size"] or 0) if old else 0), len(photo) + len(thumb))

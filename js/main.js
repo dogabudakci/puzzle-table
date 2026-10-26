@@ -12,7 +12,7 @@ import { createTablePicker, getTable, tableTextureUrl } from './textures.js';
 import { isSoundOn, setSoundOn } from './effects.js';
 import { t, photoName } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
-import { listPuzzles, clearProgress, loadProgress, newUid, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
+import { listPuzzles, clearProgress, loadProgress, newUid, startDailyAttempt, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
 import { daySeed, useAccountDays, guestDays, forgetGuestDays, waitingDays, keepWaitingDay, forgetWaitingDays } from './daily.js';
 import { setIcon } from './icons.js';
 import { initHero } from './hero.js';
@@ -24,7 +24,7 @@ import { initSocial } from './social.js';
 import { saver, scheduleSave, saveNow, photoBlobs, refreshResume, continueSaved } from './resumeCard.js';
 import { refreshDaily, showDailyDone } from './dailyCard.js';
 import { startMatch, finishMatch, showConnection } from './friendPlay.js';
-import { saveToGallery, showGallery, showGalleryCount, sendWaitingPuzzles } from './galleryScreen.js';
+import { saveToGallery, galleryShot, showGallery, showGalleryCount, sendWaitingPuzzles } from './galleryScreen.js';
 import { starRating, showStars, showPersonalBest, showCompleteCard, hideCompleteCard } from './resultCard.js';
 import { setMusicPanel, isMusicPanelOpen } from './musicPanel.js';
 import { showTipsOnce, closeTips } from './settingsPanel.js';
@@ -560,6 +560,7 @@ async function startGame({ restore = null, match = null } = {}) {
     announce: (text) => { $('announcer').textContent = text; },
     onSpill: () => {
       state.clock.start();
+      if (state.daily) startDailyAttempt(state.daily).catch(() => {});
       setPlayControls(true);
       showTipsOnce();
       // A challenge's clock is kept by the server, from the first time the pieces came out.
@@ -580,6 +581,7 @@ async function startGame({ restore = null, match = null } = {}) {
       clock.pause();
       saver.stop();
       const { gameId } = state;
+      const shot = galleryShot();
       showDailyDone(clock.elapsed, state.game.moves);
       const mysteryNote = $('mystery-note');
       mysteryNote.hidden = !state.mystery;
@@ -612,7 +614,7 @@ async function startGame({ restore = null, match = null } = {}) {
       // Compare with earlier puzzles of the same size before this one is saved among them. The
       // unfinished save goes only once the puzzle is safe, so a failed gallery save loses nothing.
       showPersonalBest(state.pieces.count, clock.elapsed)
-        .finally(() => saveToGallery(result))
+        .finally(() => saveToGallery(result, shot))
         .then((safe) => (safe ? clearProgress(gameId) : null))
         .catch(() => {})
         .finally(refreshResume);

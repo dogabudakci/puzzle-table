@@ -91,9 +91,22 @@ check(rec["wins"] == 1 and rec["losses"] == 2, f"joe's record {rec}")
 
 # Daily ranking
 day = time.strftime("%Y-%m-%d")
-check(a.call("daily/result", {"day": day, "timeMs": 5000})[0] == 400, "impossibly fast time refused")
+check(a.call("daily/result", {"day": day, "timeMs": 300000})[1].get("ranked") is False,
+      "a time with no start the server saw doesn't rank")
+for player in (a, b, c):
+    player.call("daily/start", {"day": day})
+check(a.call("daily/result", {"day": day, "timeMs": 300000})[1].get("ranked") is False,
+      "nor one longer than the time since the start")
+# As if they'd begun an hour ago (the test can't wait that long).
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+from db import Database  # noqa: E402
+with Database(os.environ.get("PUZZLE_DB"), os.environ.get("DATABASE_URL")).connect() as db:
+    db.execute("UPDATE daily SET started_at = started_at - 3600000 WHERE day = ?", (day,))
+a.call("daily/start", {"day": day})  # a second start doesn't move the first
+check(a.call("daily/result", {"day": day, "timeMs": 5000})[1].get("ranked") is False, "impossibly fast time doesn't rank")
 check(a.call("daily/result", {"day": "2001-01-01", "timeMs": 300000})[0] == 400, "old day refused")
-check(a.call("daily/result", {"day": day, "timeMs": 300000, "moves": 120})[0] == 200, "ida's time")
+check(a.call("daily/result", {"day": day, "timeMs": 300000, "moves": 120})[1].get("ranked") is True, "ida's time")
 a.call("daily/result", {"day": day, "timeMs": 400000})  # slower: the best is kept
 b.call("daily/result", {"day": day, "timeMs": 250000})
 c.call("daily/result", {"day": day, "timeMs": 100000})  # not a friend: not on their board

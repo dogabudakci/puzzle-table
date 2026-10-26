@@ -208,6 +208,7 @@ ann.call("match/begin", {"id": cid})
 time.sleep(0.4)
 b1 = ann.call("match/begin", {"id": cid})[1]["beganAt"]
 solve(ann, cid, 12, began)
+time.sleep(0.3)  # a little slower than ben will be, so the times can't tie to the millisecond
 check(ann.call("match/finish", {"id": cid, "stars": 2})[0] == 200, "ann finishes the challenge")
 m = ben.call(f"match/{cid}")[1]["match"]
 check(m["them"]["finished"] and m["them"]["timeMs"] is None, "ben can't see ann's time before playing")

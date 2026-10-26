@@ -95,6 +95,10 @@ HEALTH_CHECK = "/healthz"  # for Render; answers without touching the database, 
 if os.environ.get("RENDER"):
     required = ("DATABASE_URL", "PUZZLE_PUBLIC_URL", "PUZZLE_OPERATOR", "PUZZLE_CONTACT_EMAIL", "PUZZLE_COUNTRY")
     missing = [name for name in required if not os.environ.get(name)]
+    if not (os.environ.get("PUZZLE_BREVO_API_KEY") or os.environ.get("PUZZLE_SMTP_HOST")):
+        missing.append("PUZZLE_BREVO_API_KEY (or PUZZLE_SMTP_HOST), so emails can be sent")
+    if not os.environ.get("PUZZLE_MAIL_FROM"):
+        missing.append("PUZZLE_MAIL_FROM")
     if missing or not SECURE_COOKIES:
         raise SystemExit(f"Not starting: set {', '.join(missing) or 'PUZZLE_SECURE_COOKIES=1'} in Render's Environment settings.")
 
@@ -289,6 +293,11 @@ def api(handler, method="POST", limit=MAX_BODY):
             return result if isinstance(result, Response) else json_response(200, result)
         except AccountError as err:
             return json_response(err.status, {"error": str(err), "code": err.code, "values": err.values})
+        except (TypeError, ValueError, AttributeError, KeyError) as err:
+            # A value of the wrong kind (a number where text belongs, a list for an object…): the
+            # request is at fault, so it gets a clear 400 instead of a server error.
+            print(f"api bad request on {request.url.path}: {err!r}", flush=True)
+            return json_response(400, {"error": "Invalid request.", "code": "invalidRequest"})
         except Exception as err:  # never leak details to the browser
             print(f"api error on {request.url.path}: {err!r}", flush=True)
             return json_response(500, {"error": "Something went wrong. Please try again.", "code": "somethingWrong"})
@@ -330,6 +339,7 @@ def logout(call):
 def change_password(call):
     user = call.require_user()
     accounts.change_password(user["id"], call.body.get("current"), call.body.get("password"), call.token)
+    hub.close_user(user["id"])  # signed-out devices stop getting live updates now (this one reconnects)
     return {"user": user}
 
 
@@ -349,7 +359,9 @@ def reset_request(call):
 
 def reset_confirm(call):
     token = recovery.reset_password(call.body.get("token"), call.body.get("password"))
-    return json_response(200, {"user": accounts.session_user(token)}, session=token)
+    user = accounts.session_user(token)
+    hub.close_user(user["id"])  # every earlier session was signed out: their live updates end too
+    return json_response(200, {"user": user}, session=token)
 
 
 def set_email(call):
@@ -408,6 +420,8 @@ ROUTES_SAVED = [
           methods=["POST"]),
     Route("/api/daily", api(lambda c: {"days": userdata.list_days(uid(c))}, "GET"), methods=["GET"]),
     Route("/api/daily", api(lambda c: userdata.add_days(uid(c), c.body.get("days")) or {"ok": True}), methods=["POST"]),
+    Route("/api/daily/start", api(lambda c: userdata.daily_start(uid(c), c.body.get("day")) or {"ok": True}),
+          methods=["POST"]),
     Route("/api/daily/result", api(lambda c: userdata.daily_result(
         uid(c), c.body.get("day"), c.body.get("timeMs"), c.body.get("moves")) or {"ok": True}), methods=["POST"]),
     Route("/api/daily/friends/{day}", api(lambda c, day: {"board": social.daily_board(uid(c), day)}

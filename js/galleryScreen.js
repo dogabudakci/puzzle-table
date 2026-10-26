@@ -46,12 +46,18 @@ export async function sendWaitingPuzzles() {
 }
 window.addEventListener('online', sendWaitingPuzzles);
 
+// The finished puzzle's details, read the moment it's finished: by the time the gallery save runs
+// the player may have started another one.
+export function galleryShot() {
+  const { photo, pieces, table } = state;
+  return { photo, pieces, table };
+}
+
 // Hangs the finished puzzle in the gallery and reports any new achievements on the complete card.
 // Resolves true once the puzzle is safe: in the gallery, or (signed in, while the account can't
 // be reached) kept on this device until it can go there. Only then is the unfinished save removed.
-export async function saveToGallery(result) {
+export async function saveToGallery(result, { photo, pieces, table } = galleryShot()) {
   const savedNote = $('saved-note');
-  const { photo, pieces, table } = state; // read now: the player may start another game meanwhile
   let record;
   try {
     const { blob, canvas } = await photoBlob(photo.canvas);

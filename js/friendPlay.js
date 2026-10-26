@@ -9,7 +9,7 @@ import { fetchLibraryPhoto, loadLibrary } from './photoLibrary.js';
 import { loadImageFile, analyzeResolution } from './imageLoader.js';
 import { formatTime } from './timer.js';
 import { starRating, showStars, showCompleteCard } from './resultCard.js';
-import { saveToGallery } from './galleryScreen.js';
+import { saveToGallery, galleryShot } from './galleryScreen.js';
 import { t } from './i18n.js';
 
 // While playing with a friend, say so when the connection drops, and catch up once it's back.
@@ -79,6 +79,7 @@ export async function startMatch(matchId) {
 // The puzzle is done: the server measures the time and says who won; then the usual card.
 export async function finishMatch(match) {
   const { clock, game } = state;
+  const shot = galleryShot(); // before anything else can start another game
   clock.pause();
   app.setPlayControls(false);
   const stars = starRating(state.pieces.count, game.moves, game.hintsUsed);
@@ -115,7 +116,7 @@ export async function finishMatch(match) {
   const won = match.mode === 'race' && reply ? !reply.late : details?.winner === 'me';
   note.classList.toggle('won', won);
   note.hidden = false;
-  saveToGallery({ timeMs, limitMs: null, beatClock: false, hintsUsed: game.hintsUsed, moves: game.moves, stars });
+  saveToGallery({ timeMs, limitMs: null, beatClock: false, hintsUsed: game.hintsUsed, moves: game.moves, stars }, shot);
   app.social.refreshMatches();
   showCompleteCard();
 }
