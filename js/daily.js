@@ -3,6 +3,8 @@
 // Finished days are kept in localStorage on this device, or in the player's account when signed in.
 
 const DONE_KEY = 'puzzle-daily-done';
+// Days played signed in that the account didn't receive yet (offline), by player: sent later.
+const WAITING_KEY = 'puzzle-daily-waiting';
 export const DAILY_PIECES = 100;
 
 export function dayKey(date = new Date()) {
@@ -53,15 +55,49 @@ function localDays() {
   }
 }
 
-// The days played here as a guest, removed from this browser (they move into the account).
-export function takeGuestDays() {
-  const days = [...localDays()];
+function readJson(key, fallback) {
   try {
-    localStorage.removeItem(DONE_KEY);
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
   } catch {
-    // Storage unavailable: nothing was stored.
+    return fallback;
   }
-  return days;
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage unavailable (private mode): nothing is kept.
+  }
+}
+
+// The days played here as a guest (they move into the account on signing in).
+export function guestDays() {
+  return [...localDays()];
+}
+
+// Once the account has them: removed from this browser (any played meanwhile stay).
+export function forgetGuestDays(days) {
+  const left = [...localDays()].filter((d) => !days.includes(d));
+  writeJson(DONE_KEY, left);
+}
+
+export function waitingDays(userId) {
+  const all = readJson(WAITING_KEY, {});
+  return Array.isArray(all[userId]) ? all[userId] : [];
+}
+
+export function keepWaitingDay(userId, day) {
+  const all = readJson(WAITING_KEY, {});
+  all[userId] = [...new Set([...(all[userId] ?? []), day])];
+  writeJson(WAITING_KEY, all);
+}
+
+export function forgetWaitingDays(userId, days) {
+  const all = readJson(WAITING_KEY, {});
+  all[userId] = (all[userId] ?? []).filter((d) => !days.includes(d));
+  if (!all[userId].length) delete all[userId];
+  writeJson(WAITING_KEY, all);
 }
 
 export function doneDays() {

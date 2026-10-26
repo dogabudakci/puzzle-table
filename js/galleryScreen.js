@@ -2,7 +2,8 @@
 // close-up view of one puzzle. (Drawing the room itself is in gallery.js.)
 
 import { $, app, state, screens, showScreen } from './app.js';
-import { savePuzzle, listPuzzles, deletePuzzle, listAchievements, saveAchievements, puzzleImage } from './library.js';
+import { savePuzzle, keepPuzzleForLater, sendWaitingPuzzles as sendWaiting, listPuzzles, deletePuzzle, listAchievements,
+  saveAchievements, puzzleImage, isSignedIn, newUid } from './library.js';
 import { ACHIEVEMENTS, newlyEarned } from './achievements.js';
 import { renderGallery, renderViewer } from './gallery.js';
 import { tableTextureUrl } from './textures.js';
@@ -26,13 +27,36 @@ function photoBlob(source) {
   return new Promise((resolve) => canvas.toBlob((blob) => resolve({ blob, canvas }), 'image/jpeg', 0.82));
 }
 
+// Achievements earned by the puzzles in the gallery now and not recorded yet: recorded, and returned.
+async function awardAchievements() {
+  const [puzzles, earned] = await Promise.all([listPuzzles(), listAchievements()]);
+  const fresh = newlyEarned(puzzles, new Set(earned.map((a) => a.id)));
+  if (fresh.length) await saveAchievements(fresh.map((a) => ({ id: a.id, earnedAt: Date.now() })));
+  showGalleryCount(puzzles.length);
+  return fresh;
+}
+
+// Puzzles finished while the account couldn't be reached go into its gallery now.
+export async function sendWaitingPuzzles() {
+  try {
+    if (await sendWaiting()) await awardAchievements();
+  } catch {
+    // Still unreachable: they stay on this device until the next try.
+  }
+}
+window.addEventListener('online', sendWaitingPuzzles);
+
 // Hangs the finished puzzle in the gallery and reports any new achievements on the complete card.
+// Resolves true once the puzzle is safe: in the gallery, or (signed in, while the account can't
+// be reached) kept on this device until it can go there. Only then is the unfinished save removed.
 export async function saveToGallery(result) {
   const savedNote = $('saved-note');
   const { photo, pieces, table } = state; // read now: the player may start another game meanwhile
+  let record;
   try {
     const { blob, canvas } = await photoBlob(photo.canvas);
-    await savePuzzle({
+    record = {
+      uid: newUid(),
       createdAt: Date.now(),
       name: photo.name,
       image: blob,
@@ -43,13 +67,25 @@ export async function saveToGallery(result) {
       rows: pieces.rows,
       table,
       ...result,
-    });
-
-    const [puzzles, earned] = await Promise.all([listPuzzles(), listAchievements()]);
-    const fresh = newlyEarned(puzzles, new Set(earned.map((a) => a.id)));
-    if (fresh.length) await saveAchievements(fresh.map((a) => ({ id: a.id, earnedAt: Date.now() })));
-    showGalleryCount(puzzles.length);
-
+    };
+    await savePuzzle(record);
+  } catch (err) {
+    console.error(err);
+    // Kept for later only when the account couldn't be reached; a refusal (e.g. storage full) is shown.
+    if (record && isSignedIn() && (err?.code === 'offline' || err?.status >= 500)) {
+      try {
+        await keepPuzzleForLater(record);
+        savedNote.replaceChildren(icon('i-check'), t('play.galleryWaiting'));
+        return true;
+      } catch {
+        // Not even this device can keep it.
+      }
+    }
+    savedNote.textContent = err?.code && err?.code !== 'offline' ? err.message : t('play.couldnSaveGalleryBrowser');
+    return false;
+  }
+  try {
+    const fresh = await awardAchievements();
     savedNote.replaceChildren(icon('i-check'), t('play.framedHungGallery'));
     $('new-medals').replaceChildren(...fresh.map((a, i) => {
       const medal = document.createElement('span');
@@ -62,9 +98,10 @@ export async function saveToGallery(result) {
       return medal;
     }));
   } catch (err) {
-    console.error(err);
-    savedNote.textContent = t('play.couldnSaveGalleryBrowser');
+    console.error(err); // the puzzle is saved; only the achievements check didn't finish
+    savedNote.replaceChildren(icon('i-check'), t('play.framedHungGallery'));
   }
+  return true;
 }
 
 export function showGalleryCount(count) {

@@ -46,8 +46,8 @@ export class MatchSession {
   post(body) {
     if (this.ended) return Promise.resolve({ ok: false });
     return api('match/event', { id: this.id, ...body }).catch((err) => {
-      if (/isn't open/.test(err.message)) this.ended = true;
-      if (/reach the server/.test(err.message)) this.hooks.onConnection?.(false);
+      if (err?.code === 'gameClosed') this.ended = true;
+      if (err?.code === 'offline') this.hooks.onConnection?.(false);
       return { ok: false };
     });
   }
@@ -188,7 +188,7 @@ export class MatchSession {
         this.game.applyLayout(state.layout, state.held?.[0]?.pieces ?? []);
       }
     } catch (err) {
-      if (/isn't open|sign in/i.test(err.message)) { // the game ended, or the sign-in did meanwhile
+      if (err?.code === 'gameClosed' || err?.code === 'signInFirst') { // the game ended, or the sign-in did meanwhile
         this.ended = true;
         this.hooks.onEnded?.();
       }
@@ -250,16 +250,19 @@ export class MatchSession {
 
   // Races and challenges: every join goes to the server, which keeps its own record of the puzzle.
   // A win only counts once that record is complete (and the friend's progress bar comes from it).
+  // A report that doesn't arrive is sent again (for about 40 seconds, through a dropped connection):
+  // the server only accepts joins that build on the ones it has seen.
   reportJoin(pieces) {
     if (this.mode === 'together' || this.ended) return;
     const send = (tries) => api('match/join', { id: this.id, pieces }).catch(async (err) => {
-      if (tries > 0 && /Too many|reach the server/.test(err.message)) {
-        await new Promise((r) => setTimeout(r, 300));
+      if (tries > 0 && !this.ended && (err?.code === 'tooManyMoves' || err?.code === 'offline' || err?.status >= 500)) {
+        await new Promise((r) => setTimeout(r, Math.min(5000, 300 * 2 ** (12 - tries))));
         return send(tries - 1);
       }
-      return null; // a later join reports the whole group again, so nothing is lost for good
+      if (err?.code === 'gameClosed') this.ended = true;
+      return null;
     });
-    this.enqueue(() => send(3));
+    this.enqueue(() => send(12));
   }
 
   /* ---------- The friend's chip in the toolbar ---------- */
@@ -293,7 +296,7 @@ export class MatchSession {
         return await api('match/finish', { id: this.id, ...result });
       } catch (err) {
         // The last join may still be on its way: give the server a moment to count it.
-        if (tries >= 3 || !/finished yet/.test(err.message)) throw err;
+        if (tries >= 3 || err?.code !== 'notSolvedYet') throw err;
         await new Promise((r) => setTimeout(r, 500));
       }
     }
@@ -319,7 +322,11 @@ export function resultLine(session, match, reply) {
     return mine ? t('match.finishedTogether', { a: name, b: formatTime(mine) }) : t('match.finishedTogether2', { a: name });
   }
   if (session.mode === 'race') {
-    return reply?.late ? t('match.finishedFirstWellPlayed', { a: name }) : t('match.wonRaceAgainst', { a: name });
+    // Who won is the server's to say: its answer, or else the game's result if it's in already.
+    const winner = reply ? (reply.late ? 'friend' : 'me') : match?.winner;
+    if (winner === 'me') return t('match.wonRaceAgainst', { a: name });
+    if (winner === 'friend') return t('match.finishedFirstWellPlayed', { a: name });
+    return t('match.resultNotConfirmed');
   }
   if (match?.status !== 'finished') return t('match.timeHasnPlayedYet', { a: name });
   const theirs = match.them?.timeMs;

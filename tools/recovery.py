@@ -9,7 +9,11 @@ Security choices:
 - "Forgot password" answers the same way whether or not the email has an account, and only
   confirmed emails can receive reset links (otherwise anyone could sign up with someone
   else's address and take it over later).
-- Resetting a password signs out every session and cancels every other outstanding link.
+- Resetting or changing the password, or changing the email, signs out the other sessions and
+  cancels every outstanding link (and any email change waiting to be confirmed). A reset link
+  also only works while the account's confirmed email is still the one it was sent to.
+- Confirming a password (to change the email, password or delete the account) is rate-limited
+  like signing in.
 - Requests are rate-limited per email and per network address.
 """
 
@@ -18,7 +22,7 @@ import secrets
 import time
 
 import mailer
-from accounts import EMAIL_RE, AccountError, hash_password, check_password, token_hash
+from accounts import EMAIL_RE, AccountError, hash_password, token_hash
 
 RESET_MINUTES = 30
 VERIFY_HOURS = 48
@@ -109,6 +113,9 @@ class Recovery:
                 )
             except self.accounts.database.IntegrityError:
                 raise AccountError("That email now belongs to another account.", 409, code="emailNowTaken")
+            if before and before["email"] != row["email"]:
+                # A reset link sent to the old address must not work any more.
+                db.execute("DELETE FROM tokens WHERE user_id = ? AND purpose = 'reset'", (row["user_id"],))
         # Tell the old confirmed address, so a change nobody asked for doesn't go unnoticed.
         if before and before["email"] and before["email_verified"] and before["email"] != row["email"]:
             mailer.send(before["email"], "Your Puzzle Table email was changed", (
@@ -129,8 +136,9 @@ class Recovery:
             raise AccountError("Please enter a valid email address.", code="invalidEmail")
         with self.connect() as db:
             row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-            if not row or not check_password(password or "", row["password_hash"]):
-                raise AccountError("Your password isn't right.", 401, code="wrongYourPassword")
+        self.accounts.check_own_password(user_id, password, row and row["password_hash"],
+                                         AccountError("Your password isn't right.", 401, code="wrongYourPassword"))
+        with self.connect() as db:
             taken = db.execute("SELECT 1 FROM users WHERE email = ? AND id != ?", (email, user_id)).fetchone()
             if taken:
                 raise AccountError("That email belongs to another account.", 409, code="emailTaken")
@@ -178,7 +186,8 @@ class Recovery:
         with self.connect() as db:
             row = db.execute(
                 "SELECT t.user_id, u.username, u.email FROM tokens t JOIN users u ON u.id = t.user_id"
-                " WHERE t.token_hash = ? AND t.purpose = 'reset' AND t.expires_at > ?",
+                " WHERE t.token_hash = ? AND t.purpose = 'reset' AND t.expires_at > ?"
+                " AND t.email = u.email AND u.email_verified = 1",
                 (token_hash(token), int(time.time())),
             ).fetchone() if valid else None
         if not row:
@@ -191,7 +200,7 @@ class Recovery:
                 raise AccountError("This link has expired or was already used. Please ask for a new one.", 410, code="linkExpired")
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (stored, row["user_id"]))
             db.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))  # sign out everywhere
-            db.execute("DELETE FROM tokens WHERE user_id = ?", (row["user_id"],))
+            self.accounts.forget_links(db, row["user_id"])
         return self.accounts.new_session(row["user_id"])
 
 def public_url(port):

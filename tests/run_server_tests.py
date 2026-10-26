@@ -19,7 +19,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-SUITES = ["test_accounts.py", "test_friends.py", "test_safety.py", "test_extras.py", "test_admin.py", "test_resilience.py"]
+SUITES = ["test_accounts.py", "test_friends.py", "test_safety.py", "test_extras.py", "test_admin.py", "test_resilience.py", "test_integrity.py"]
 
 
 def free_port():

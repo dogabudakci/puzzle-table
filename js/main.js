@@ -12,8 +12,8 @@ import { createTablePicker, getTable, tableTextureUrl } from './textures.js';
 import { isSoundOn, setSoundOn } from './effects.js';
 import { t, photoName } from './i18n.js';
 import { GameTimer, formatTime, suggestedMinutes } from './timer.js';
-import { listPuzzles, clearProgress, loadProgress, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
-import { daySeed, useAccountDays, takeGuestDays } from './daily.js';
+import { listPuzzles, clearProgress, loadProgress, newUid, setUser, moveGuestDataToAccount, listAccountDays, addAccountDays } from './library.js';
+import { daySeed, useAccountDays, guestDays, forgetGuestDays, waitingDays, keepWaitingDay, forgetWaitingDays } from './daily.js';
 import { setIcon } from './icons.js';
 import { initHero } from './hero.js';
 import { playIntro, introWillPlay, INTRO_REVEAL } from './intro.js';
@@ -24,7 +24,7 @@ import { initSocial } from './social.js';
 import { saver, scheduleSave, saveNow, photoBlobs, refreshResume, continueSaved } from './resumeCard.js';
 import { refreshDaily, showDailyDone } from './dailyCard.js';
 import { startMatch, finishMatch, showConnection } from './friendPlay.js';
-import { saveToGallery, showGallery, showGalleryCount } from './galleryScreen.js';
+import { saveToGallery, showGallery, showGalleryCount, sendWaitingPuzzles } from './galleryScreen.js';
 import { starRating, showStars, showPersonalBest, showCompleteCard, hideCompleteCard } from './resultCard.js';
 import { setMusicPanel, isMusicPanelOpen } from './musicPanel.js';
 import { showTipsOnce, closeTips } from './settingsPanel.js';
@@ -84,10 +84,18 @@ async function accountChanged(user) {
     : t('start.photosStayDevice');
   if (user) {
     try {
-      const guestDays = takeGuestDays();
-      if (guestDays.length) await addAccountDays(guestDays);
-      useAccountDays(await listAccountDays(), (day) => addAccountDays([day]).catch(() => {}));
+      // Days played as a guest, or signed in while offline, go to the account; they're only
+      // removed here once it has them.
+      const fromGuest = guestDays();
+      const waiting = waitingDays(user.id);
+      if (fromGuest.length || waiting.length) {
+        await addAccountDays([...new Set([...fromGuest, ...waiting])]);
+        forgetGuestDays(fromGuest);
+        forgetWaitingDays(user.id, waiting);
+      }
+      useAccountDays(await listAccountDays(), (day) => addAccountDays([day]).catch(() => keepWaitingDay(user.id, day)));
       await moveGuestDataToAccount();
+      await sendWaitingPuzzles();
     } catch (err) {
       console.warn('Moving guest progress into the account stopped:', err.message);
     }
@@ -511,6 +519,7 @@ async function startGame({ restore = null, match = null } = {}) {
   state.match = match;
   state.seed = restore?.seed ?? state.pendingSeed ?? Math.floor(Math.random() * 2 ** 31);
   state.pendingSeed = null;
+  state.gameId = restore?.gameId ?? newUid();
   rememberOpenGame(match ? { kind: 'match', id: match.id } : { kind: 'saved', seed: state.seed });
   showScreen(gameScreen);
   showProgress(0);
@@ -570,7 +579,7 @@ async function startGame({ restore = null, match = null } = {}) {
       const { clock } = state;
       clock.pause();
       saver.stop();
-      clearProgress().catch(() => {}).finally(refreshResume);
+      const { gameId } = state;
       showDailyDone(clock.elapsed, state.game.moves);
       const mysteryNote = $('mystery-note');
       mysteryNote.hidden = !state.mystery;
@@ -600,8 +609,13 @@ async function startGame({ restore = null, match = null } = {}) {
         moves,
         stars,
       };
-      // Compare with earlier puzzles of the same size before this one is saved among them.
-      showPersonalBest(state.pieces.count, clock.elapsed).finally(() => saveToGallery(result));
+      // Compare with earlier puzzles of the same size before this one is saved among them. The
+      // unfinished save goes only once the puzzle is safe, so a failed gallery save loses nothing.
+      showPersonalBest(state.pieces.count, clock.elapsed)
+        .finally(() => saveToGallery(result))
+        .then((safe) => (safe ? clearProgress(gameId) : null))
+        .catch(() => {})
+        .finally(refreshResume);
       showCompleteCard();
     },
   });

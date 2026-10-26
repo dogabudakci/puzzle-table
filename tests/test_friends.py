@@ -2,6 +2,7 @@
 
 Run through tests/run_server_tests.py, which starts a fresh server for it."""
 import base64, json, os, queue, sys, threading, time, urllib.request, urllib.error, http.cookiejar
+from pictures import jpeg
 
 BASE = sys.argv[1]
 ok = 0
@@ -161,7 +162,7 @@ check(m["status"] == "finished" and m["me"]["finished"] and m["them"]["timeMs"] 
 check(ann.call("match/finish", {"id": mid})[1]["timeMs"] == m["me"]["timeMs"], "finish returns server time")
 
 # ---- race, swap with an uploaded photo ----
-img = base64.b64encode(b"\xff\xd8\xff" + os.urandom(5000)).decode()
+img = base64.b64encode(jpeg(5000)).decode()
 s, d = ann.call("match/create", {"friend": ben_id, "mode": "race", "picks": "swap", "pieces": 24,
                                 "puzzle": {"image": img, "name": "My cat", "cols": 6, "rows": 4}})
 rid = d["id"]

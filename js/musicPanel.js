@@ -83,7 +83,7 @@ async function playMusic(source) {
     ownAudio.pause();
     setAudioSession('auto');
     showMusicState();
-    $('music-now').textContent = /timed out/.test(error?.message)
+    $('music-now').textContent = error?.code === 'timeout'
       ? t('music.didNotStart')
       : t('music.audioCouldNotStart');
     console.warn('Puzzle music could not start:', error);

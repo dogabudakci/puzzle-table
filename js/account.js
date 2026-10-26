@@ -198,10 +198,21 @@ export function initAccount({ onChange } = {}) {
     });
   });
 
+  // Only once the server has ended the session: otherwise the account would still be signed in
+  // here while looking signed out.
   $('logout-btn').addEventListener('click', async () => {
-    await api('logout', {}).catch(() => {});
-    showUser(null);
-    dialog.close();
+    const logoutBtn = $('logout-btn');
+    logoutBtn.disabled = true;
+    showError($('logout-error'), '');
+    try {
+      await api('logout', {});
+      showUser(null);
+      dialog.close();
+    } catch (err) {
+      showError($('logout-error'), err?.code === 'offline' || !err?.message ? t('account.signOutOffline') : err.message);
+    } finally {
+      logoutBtn.disabled = false;
+    }
   });
 
   /* ---------- Opening and closing ---------- */

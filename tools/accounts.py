@@ -243,22 +243,42 @@ class Accounts:
             with self.connect() as db:
                 db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash(token),))
 
+    def check_own_password(self, user_id, password, stored, error):
+        """For changes a signed-in player confirms with their password: limited like signing in,
+        so a session left open somewhere can't be used to guess the password."""
+        key = f"pw:{user_id}"
+        if self.limits.count(key) >= MAX_FAILS_PER_ACCOUNT:
+            raise AccountError("Too many attempts. Please wait 15 minutes and try again.", 429, code="tooManyAttempts")
+        if not stored or not check_password(password or "", stored):
+            self.limits.add(key)
+            raise error
+        self.limits.clear(key)
+
+    @staticmethod
+    def forget_links(db, user_id):
+        """Cancels every emailed link and any email change still waiting to be confirmed: after the
+        password or email changes, a link (or inbox) someone else may hold must stop working."""
+        db.execute("DELETE FROM tokens WHERE user_id = ?", (user_id,))
+        db.execute("UPDATE users SET pending_email = NULL WHERE id = ?", (user_id,))
+
     def change_password(self, user_id, current, new, keep_token):
         with self.connect() as db:
             row = db.execute("SELECT username, email, password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row or not check_password(current or "", row["password_hash"]):
-            raise AccountError("Your current password isn't right.", 401, code="wrongCurrentPassword")
+        self.check_own_password(user_id, current, row and row["password_hash"],
+                                AccountError("Your current password isn't right.", 401, code="wrongCurrentPassword"))
         self.check_new_password(new, row["email"] or row["username"])
         with self.connect() as db:
             db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new), user_id))
             # Sign out everywhere else: a stolen session stops working once the password changes.
             db.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user_id, token_hash(keep_token)))
+            self.forget_links(db, user_id)
 
     def delete_account(self, user_id, password):
         with self.connect() as db:
             row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-            if not row or not check_password(password or "", row["password_hash"]):
-                raise AccountError("That password isn't right.", 401, code="wrongPassword")
+        self.check_own_password(user_id, password, row and row["password_hash"],
+                                AccountError("That password isn't right.", 401, code="wrongPassword"))
+        with self.connect() as db:
             db.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
     def user(self, user_id):

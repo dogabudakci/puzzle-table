@@ -50,7 +50,7 @@ from starlette.routing import Route
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_library  # noqa: E402
 from accounts import DB_PATH, SESSION_DAYS, AccountError, Accounts  # noqa: E402
-from userdata import UserData  # noqa: E402
+from userdata import UserData, text  # noqa: E402
 from recovery import Recovery, public_url  # noqa: E402
 from social import Hub, Social  # noqa: E402
 from admin import Admin  # noqa: E402
@@ -422,7 +422,8 @@ ROUTES_SAVED = [
           methods=["GET"]),
     Route("/api/progress/full", api(lambda c: userdata.save_progress_full(uid(c), c.body) or {"ok": True},
                                     limit=MAX_UPLOAD_BODY), methods=["POST"]),
-    Route("/api/progress/clear", api(lambda c: userdata.clear_progress(uid(c)) or {"ok": True}), methods=["POST"]),
+    Route("/api/progress/clear", api(lambda c: userdata.clear_progress(uid(c), text(c.body.get("gameId"), 80, None))
+                                     or {"ok": True}), methods=["POST"]),
 ]
 
 

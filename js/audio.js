@@ -28,13 +28,14 @@ export function onAudioRestart(fn) {
   restartListeners.add(fn);
 }
 
-// Rejects if `promise` hasn't settled within `ms` (audio start-up can hang, e.g. in Safari).
+// Rejects if `promise` hasn't settled within `ms` (audio start-up can hang, e.g. in Safari),
+// with an Error whose code is 'timeout'.
 export function withTimeout(promise, ms, message) {
   let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); }),
-  ]).finally(() => clearTimeout(timer));
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(message), { code: 'timeout' })), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 export async function resumeAudio() {

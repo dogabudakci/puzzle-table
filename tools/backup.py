@@ -64,6 +64,12 @@ def save(target=None):
     database = open_database()
     data = {"savedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "tables": {}}
     with database.connect() as db:
+        # Every table as it was at one moment, even while the app keeps writing: otherwise a game
+        # added between two tables' reads could come back with its players but not itself.
+        if database.postgres:
+            db.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        else:
+            db.execute("BEGIN")
         for table in TABLES:
             rows = db.execute(f"SELECT * FROM {table}").fetchall()
             data["tables"][table] = [{k: encode(v) for k, v in dict(r).items()} for r in rows]

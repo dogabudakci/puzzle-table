@@ -57,6 +57,10 @@ MAX_STREAMS_PER_USER = 5
 EVENTS_PER_SECOND = 40  # per player in a live game (piece moves are sent about 10 times a second)
 MIN_MS_PER_PIECE = 400  # nobody solves faster than this: a quicker "finish" isn't a real one
 MIN_MS_BETWEEN_JOINS = 100
+# One drop joins the group in hand with the groups touching it: a single piece has four sides,
+# so five groups at most (one more allows for a report lost on the way). A report claiming more
+# isn't a real move, which keeps "the whole puzzle in one go" from counting.
+MAX_GROUPS_PER_JOIN = 6
 REPORT_REASONS = {
     "name": "Offensive username",
     "harassment": "Harassment or unkind behaviour",
@@ -378,6 +382,13 @@ class Social:
         accounts.database.script(SCHEMA)
         accounts.database.add_column("match_players", "joins", "TEXT")  # the server's record of each puzzle
         accounts.database.add_column("match_players", "last_join", "INTEGER")
+        # Who uploaded a game's photo: it counts towards their storage while the game lasts.
+        accounts.database.add_column("match_puzzles", "uploader_id", "INTEGER")
+        with self.connect() as db:  # games from before: the other player picked it, or the host for both
+            db.execute(
+                "UPDATE match_puzzles SET uploader_id = (SELECT CASE WHEN m.picks = 'same' THEN m.host_id"
+                " WHEN match_puzzles.player_id = m.host_id THEN m.guest_id ELSE m.host_id END"
+                " FROM matches m WHERE m.id = match_puzzles.match_id) WHERE uploader_id IS NULL")
 
     def connect(self):
         return self.accounts.connect()
@@ -643,12 +654,12 @@ class Social:
             image = jpeg(puzzle.get("image"), MAX_PUZZLE_IMAGE, "photo")
         return {"name": name.strip()[:80] or "Photo", "library_id": library_id, "image": image, "cols": cols, "rows": rows}
 
-    def _add_puzzle(self, db, match_id, player_id, puzzle):
+    def _add_puzzle(self, db, match_id, player_id, puzzle, uploader_id):
         db.execute(
-            "INSERT INTO match_puzzles (match_id, player_id, name, library_id, image, cols, rows, seed)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO match_puzzles (match_id, player_id, name, library_id, image, cols, rows, seed, uploader_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (match_id, player_id, puzzle["name"], puzzle["library_id"], puzzle["image"],
-             puzzle["cols"], puzzle["rows"], secrets.randbelow(2 ** 31)),
+             puzzle["cols"], puzzle["rows"], secrets.randbelow(2 ** 31), uploader_id),
         )
 
     def create_match(self, user_id, body, check_space):
@@ -681,11 +692,11 @@ class Social:
                 (match_id, mode, picks, user_id, friend, pieces, int(time.time())),
             )
             # "same": both play this puzzle (with the same cut). "swap": the host picked it for the guest.
-            self._add_puzzle(db, match_id, friend, puzzle)
+            self._add_puzzle(db, match_id, friend, puzzle, user_id)
             if picks == "same":
                 db.execute(
-                    "INSERT INTO match_puzzles (match_id, player_id, name, library_id, image, cols, rows, seed)"
-                    " SELECT match_id, ?, name, library_id, image, cols, rows, seed FROM match_puzzles"
+                    "INSERT INTO match_puzzles (match_id, player_id, name, library_id, image, cols, rows, seed, uploader_id)"
+                    " SELECT match_id, ?, name, library_id, image, cols, rows, seed, uploader_id FROM match_puzzles"
                     " WHERE match_id = ? AND player_id = ?",
                     (user_id, match_id, friend),
                 )
@@ -717,7 +728,7 @@ class Social:
                     picked = self.check_puzzle(puzzle, match["pieces"])
                     if picked["image"]:
                         check_space(db, user_id, 0, len(picked["image"]))
-                    self._add_puzzle(db, match_id, match["host_id"], picked)
+                    self._add_puzzle(db, match_id, match["host_id"], picked, user_id)
                 db.execute("UPDATE matches SET status = 'accepted' WHERE id = ?", (match_id,))
         self.hub.send(match["host_id"], "matches", {"accepted" if accept else "declined": match_id})
 
@@ -938,7 +949,11 @@ class Social:
                 raise AccountError("Too many moves at once.", 429, code="tooManyMoves")
             groups = [set(g) for g in json.loads(player["joins"] or "[]")]
             joined = set(pieces)
-            for group in [g for g in groups if g & joined]:  # everything it touches becomes one group
+            touched = [g for g in groups if g & joined]
+            loose = joined.difference(*touched) if touched else joined  # pieces not in any group yet
+            if len(touched) + len(loose) > MAX_GROUPS_PER_JOIN:
+                raise AccountError("Invalid move.", code="invalidMove")
+            for group in touched:  # everything it touches becomes one group
                 joined |= group
                 groups.remove(group)
             groups.append(joined)

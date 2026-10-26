@@ -46,6 +46,7 @@ export function saveNow() {
     name: state.photo.name,
     pieces: state.pieces,
     seed: state.seed,
+    gameId: state.gameId,
     table: state.table,
     timer: { ...state.timer },
     elapsed: clock.elapsed,
@@ -68,6 +69,10 @@ window.addEventListener('pagehide', () => saveNow());
 
 let resumeThumbUrl = null;
 
+// A save with everything needed to continue it (one cut short or from elsewhere is left alone).
+const isComplete = (saved) => Boolean(saved?.photo && typeof saved.name === 'string' && saved.pieces?.count > 0
+  && Array.isArray(saved.layout));
+
 export async function refreshResume() {
   const card = $('resume-card');
   let saved = null;
@@ -76,7 +81,7 @@ export async function refreshResume() {
   } catch {
     // Storage unavailable: nothing to continue.
   }
-  if (!saved) {
+  if (!isComplete(saved)) {
     card.hidden = true;
     return;
   }
@@ -108,7 +113,7 @@ export async function continueSaved() {
   button.disabled = true;
   try {
     const saved = await loadProgress();
-    if (!saved) return refreshResume();
+    if (!isComplete(saved)) return refreshResume();
     const photo = await loadImageFile(new File([saved.photo.blob], saved.name, { type: 'image/jpeg' }));
     if (state.photo) URL.revokeObjectURL(state.photo.url);
     photo.quality = analyzeResolution(photo.width, photo.height);

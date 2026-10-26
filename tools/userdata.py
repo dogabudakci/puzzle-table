@@ -73,9 +73,44 @@ def jpeg(data_b64, limit, what):
         raise AccountError(f"The {what} couldn't be read.", code="fileUnreadable", values={"a": what})
     if len(data) > limit:
         raise AccountError(f"The {what} is too large.", 413, code="fileTooLarge", values={"a": what})
-    if not data.startswith(b"\xff\xd8\xff"):
+    if not is_jpeg(data):
         raise AccountError(f"The {what} must be a JPEG.", code="fileNotJpeg", values={"a": what})
     return data
+
+
+MAX_SIDE = 8000  # px: far more than the app ever sends (it shrinks photos to fit the screen)
+SOF_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def is_jpeg(data):
+    """Whether `data` is laid out like a real JPEG picture: its segments in order, a frame of a
+    sensible size, image data, and the end marker. (Just the first bytes being right isn't enough:
+    anything could follow them.)"""
+    if not data.startswith(b"\xff\xd8") or not data.rstrip(b"\x00").endswith(b"\xff\xd9"):
+        return False
+    pos, size_seen = 2, False
+    while pos + 4 <= len(data):
+        if data[pos] != 0xFF:
+            return False
+        marker = data[pos + 1]
+        if marker == 0xFF:  # fill byte
+            pos += 1
+            continue
+        length = int.from_bytes(data[pos + 2:pos + 4], "big")
+        if length < 2 or pos + 2 + length > len(data):
+            return False
+        if marker in SOF_MARKERS:
+            if length < 8:
+                return False
+            height = int.from_bytes(data[pos + 5:pos + 7], "big")
+            width = int.from_bytes(data[pos + 7:pos + 9], "big")
+            if not (1 <= width <= MAX_SIDE and 1 <= height <= MAX_SIDE):
+                return False
+            size_seen = True
+        if marker == 0xDA:  # start of the image data, which runs to the end marker
+            return size_seen
+        pos += 2 + length
+    return False
 
 
 def number(value, low, high, default=None):
@@ -133,8 +168,10 @@ class UserData:
     def storage_used(self, db, user_id):
         row = db.execute(
             "SELECT COALESCE((SELECT SUM(LENGTH(image)) FROM gallery WHERE user_id = ?), 0)"
-            " + COALESCE((SELECT LENGTH(photo) + LENGTH(thumb) FROM progress WHERE user_id = ?), 0) AS used",
-            (user_id, user_id),
+            " + COALESCE((SELECT LENGTH(photo) + LENGTH(thumb) FROM progress WHERE user_id = ?), 0)"
+            # photos sent with games that are still open (they're removed when a game ends)
+            " + COALESCE((SELECT SUM(LENGTH(image)) FROM match_puzzles WHERE uploader_id = ?), 0) AS used",
+            (user_id, user_id, user_id),
         ).fetchone()
         return int(row["used"] or 0)
 
@@ -240,18 +277,30 @@ class UserData:
             return None
         return json.loads(row["meta"])
 
+    @staticmethod
+    def _same_game(row, meta):
+        """Whether a save belongs to the puzzle that's stored. Each puzzle has its own gameId, so a
+        tab still showing an older puzzle can't write its layout over a newer one's (whose photo
+        it isn't). Saves from before gameIds existed are taken as the same game."""
+        if not row or not row["has_photo"]:
+            return False
+        stored = json.loads(row["meta"] or "{}").get("gameId")
+        return not stored or not meta.get("gameId") or stored == meta.get("gameId")
+
+    def _current(self, db, user_id):
+        return db.execute("SELECT meta, photo IS NOT NULL AS has_photo FROM progress WHERE user_id = ?", (user_id,)).fetchone()
+
     def save_progress(self, user_id, meta):
+        """A later save of the puzzle that's stored: just its layout and clock."""
         if not isinstance(meta, dict):
             raise AccountError("Invalid save.", code="invalidSave")
         encoded = json.dumps(meta)
         if len(encoded) > MAX_PROGRESS_JSON:
             raise AccountError("This puzzle is too large to save.", 413, code="saveTooLarge")
         with self.connect() as db:
-            db.execute(
-                "INSERT INTO progress (user_id, meta, saved_at) VALUES (?, ?, ?)"
-                " ON CONFLICT(user_id) DO UPDATE SET meta = excluded.meta, saved_at = excluded.saved_at",
-                (user_id, encoded, int(time.time())),
-            )
+            if not self._same_game(self._current(db, user_id), meta):
+                raise AccountError("Another puzzle has been saved since, so this one wasn't.", 409, code="saveReplaced")
+            db.execute("UPDATE progress SET meta = ?, saved_at = ? WHERE user_id = ?", (encoded, int(time.time()), user_id))
 
     def save_progress_full(self, user_id, body):
         """A new puzzle's first save: photo, thumbnail and layout together, in one step. The earlier
@@ -280,6 +329,12 @@ class UserData:
             row = db.execute(f"SELECT {column} FROM progress WHERE user_id = ?", (user_id,)).fetchone()
         return bytes(row[column]) if row and row[column] is not None else None
 
-    def clear_progress(self, user_id):
+    def clear_progress(self, user_id, game_id=None):
+        """Removes the unfinished puzzle; with a gameId, only if it's still that one (a puzzle
+        finished in one tab mustn't remove a newer one started in another)."""
         with self.connect() as db:
+            if game_id is not None:
+                row = self._current(db, user_id)
+                if row and row["has_photo"] and not self._same_game(row, {"gameId": game_id}):
+                    return
             db.execute("DELETE FROM progress WHERE user_id = ?", (user_id,))

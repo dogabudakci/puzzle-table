@@ -2,6 +2,7 @@
 
 Run through tests/run_server_tests.py, which starts a fresh server for it."""
 import base64, glob, json, os, re, sys, time, urllib.request, urllib.error, http.cookiejar
+from pictures import jpeg
 
 BASE, OUTBOX = sys.argv[1], sys.argv[2]
 ok_count = 0
@@ -45,7 +46,7 @@ def last_link(kind):
 
 
 used = set()
-JPEG = b"\xff\xd8\xff\xe0" + os.urandom(3000)
+JPEG = jpeg(3000)
 B64 = base64.b64encode(JPEG).decode()
 name = f"t{int(time.time()*1000) % 10**9}"
 email = f"{name}@example.com"

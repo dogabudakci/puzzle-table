@@ -17,6 +17,7 @@ export const state = {
   game: null,
   clock: null,  // GameTimer of the running game
   seed: null,         // the cut of the running game, so it can be saved and restored
+  gameId: null,       // this puzzle's own id: its saves never replace another puzzle's
   pendingSeed: null,  // set before startGame() to use a particular cut (the daily puzzle)
   daily: null,        // the day key while playing that day's daily puzzle
   mystery: null,      // { name, allowPeek } while the photo is a secret library pick

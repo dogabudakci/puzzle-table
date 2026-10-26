@@ -85,7 +85,15 @@ export async function finishMatch(match) {
   // After any drop still on its way, so playing together the server has seen the last join.
   // (The last join finishes the puzzle before its drop is queued, hence the wait for the next tick.)
   await new Promise((resolve) => setTimeout(resolve));
-  const reply = await match.enqueue(() => match.finish({ stars, moves: game.moves, hints: game.hintsUsed })).catch(() => null);
+  // Sent again a few times if the server can't be reached; without its answer nobody is shown
+  // as the winner (the Games list has the result once it's in).
+  let reply = null;
+  for (let tries = 0; tries < 4 && !reply && state.match === match; tries++) {
+    if (tries) await new Promise((r) => setTimeout(r, 2000));
+    reply = await match.enqueue(() => match.finish({ stars, moves: game.moves, hints: game.hintsUsed }))
+      .catch((err) => (err?.code === 'offline' || err?.status >= 500 ? null : { failed: true }));
+  }
+  if (reply?.failed) reply = null;
   const details = await match.details().catch(() => null);
   if (state.match !== match) return;
   const timeMs = reply?.timeMs ?? clock.elapsed;
@@ -104,7 +112,7 @@ export async function finishMatch(match) {
   $('new-medals').replaceChildren();
   const note = $('match-note');
   note.textContent = resultLine(match, details, reply);
-  const won = match.mode === 'race' ? Boolean(reply && !reply.late) : details?.winner === 'me';
+  const won = match.mode === 'race' && reply ? !reply.late : details?.winner === 'me';
   note.classList.toggle('won', won);
   note.hidden = false;
   saveToGallery({ timeMs, limitMs: null, beatClock: false, hintsUsed: game.hintsUsed, moves: game.moves, stars });

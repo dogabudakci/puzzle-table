@@ -6,6 +6,10 @@
 //
 // A new puzzle's first save writes its photo and layout together (saveProgressFull), so the
 // previous save is only replaced once the new one is safely stored.
+//
+// Each puzzle has its own gameId. Once another tab or device has saved a different puzzle, this
+// one's saves are refused (code 'saveReplaced') rather than written over it: the toolbar then
+// says so, and saving stops.
 
 import { t } from './i18n.js';
 import { saveProgress, saveProgressFull, saveRecovery, clearRecovery } from './library.js';
@@ -26,11 +30,9 @@ export function createSaver(statusEl) {
     statusEl.dataset.state = state;
     statusEl.hidden = state === 'idle';
     const label = statusEl.querySelector('span');
-    label.textContent = state === 'saving' ? t('save.saving') : state === 'saved' ? t('save.saved') : state === 'error' ? t('save.failed') : '';
+    label.textContent = { saving: t('save.saving'), saved: t('save.saved'), error: t('save.failed'), replaced: t('save.replaced') }[state] ?? '';
     statusEl.disabled = state !== 'error';
-    statusEl.title = state === 'error'
-      ? t('save.failedHelp')
-      : '';
+    statusEl.title = { error: t('save.failedHelp'), replaced: t('save.replacedHelp') }[state] ?? '';
     if (state === 'saved') hideTimer = setTimeout(() => show('idle'), SAVED_SHOWN_MS);
   }
 
@@ -53,17 +55,28 @@ export function createSaver(statusEl) {
           await clearRecovery();
           show(pending ? 'saving' : 'saved');
         }
-      } catch {
+      } catch (err) {
+        if (err?.code === 'saveReplaced') {
+          // Another puzzle is the saved one now: this one isn't written over it.
+          if (current === game) {
+            game = null;
+            pending = null;
+            show('replaced');
+          }
+          return;
+        }
         // Signed in: a copy on this device, even if another game has started meanwhile.
         Promise.resolve(current.photo).then((photo) => saveRecovery(photo, record)).catch(() => {});
-        if (current !== game) return;
-        pending ??= record; // keep the newest, try again soon
-        show('error');
-        retryTimer = setTimeout(attempt, RETRY_MS);
+        if (current === game) {
+          pending ??= record; // keep the newest, try again soon
+          show('error');
+          retryTimer = setTimeout(attempt, RETRY_MS);
+        }
       } finally {
         running = null;
+        // Whatever is waiting now goes next, also when it's a new puzzle's started meanwhile.
+        if (pending && game && statusEl.dataset.state !== 'error') attempt();
       }
-      if (pending && current === game && statusEl.dataset.state !== 'error') attempt();
     })();
     return running;
   }

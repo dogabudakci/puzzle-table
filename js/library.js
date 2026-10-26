@@ -13,6 +13,8 @@
 //               layout and clock, 'current-photo' the photo (written once per game).
 //               'recovery' / 'recovery-photo': a copy kept here when saving to the account
 //               failed, so nothing is lost; it's offered back if it's newer than the account's.
+//               'gallery-<uid>': a finished puzzle that couldn't reach the account's gallery yet;
+//               sent as soon as it can be (sendWaitingPuzzles).
 
 import { api, apiBlob, blobToBase64 } from './api.js';
 
@@ -38,8 +40,29 @@ function openDb() {
   return dbPromise;
 }
 
+// Pictures are stored as plain bytes ({ bytes, type }), not as Blobs: some browsers (Safari's
+// private browsing, for one) can't keep Blobs in IndexedDB, and fail every later write once one
+// was tried. They become Blobs again when read. (Records saved as Blobs before still read fine.)
+async function packBlobs(record) {
+  const packed = { ...record };
+  for (const [key, value] of Object.entries(record)) {
+    if (value instanceof Blob) packed[key] = { bytes: await value.arrayBuffer(), type: value.type, packedBlob: true };
+  }
+  return packed;
+}
+
+function unpackBlobs(record) {
+  if (!record) return record;
+  const unpacked = { ...record };
+  for (const [key, value] of Object.entries(record)) {
+    if (value?.packedBlob) unpacked[key] = new Blob([value.bytes], { type: value.type });
+  }
+  return unpacked;
+}
+
 // Writes several records in one transaction: all of them are stored, or none.
 async function putAll(name, records) {
+  records = await Promise.all(records.map(packBlobs));
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(name, 'readwrite');
@@ -64,7 +87,7 @@ async function withStore(name, mode, fn) {
 }
 
 const local = {
-  listPuzzles: () => withStore('puzzles', 'readonly', (s) => s.getAll()),
+  listPuzzles: async () => (await withStore('puzzles', 'readonly', (s) => s.getAll())).map(unpackBlobs),
   deletePuzzle: (id) => withStore('puzzles', 'readwrite', (s) => s.delete(id)),
   listAchievements: () => withStore('achievements', 'readonly', (s) => s.getAll()),
   clearAchievements: () => withStore('achievements', 'readwrite', (s) => s.clear()),
@@ -73,7 +96,7 @@ const local = {
       withStore('saved', 'readonly', (s) => s.get('current')),
       withStore('saved', 'readonly', (s) => s.get('current-photo')),
     ]);
-    return meta && photo ? { ...meta, photo } : null;
+    return meta && photo ? { ...meta, photo: unpackBlobs(photo) } : null;
   },
   clearProgress: () => withStore('saved', 'readwrite', (s) => {
     s.delete('current');
@@ -84,11 +107,11 @@ const local = {
       withStore('saved', 'readonly', (s) => s.get('recovery')),
       withStore('saved', 'readonly', (s) => s.get('recovery-photo')),
     ]);
-    return meta && photo && meta.userId === user?.id ? { ...meta, photo } : null;
+    return meta && photo && meta.userId === user?.id ? { ...meta, photo: unpackBlobs(photo) } : null;
   },
 };
 
-const newUid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+export const newUid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // The finished-puzzle details the server keeps (the picture goes separately).
 function puzzleDetails(record) {
@@ -134,10 +157,32 @@ export async function moveGuestDataToAccount() {
 
 /* ---------- Finished puzzles ---------- */
 
+// `record.uid` makes saving it twice harmless (the server keeps one), so it can be retried.
 export async function savePuzzle(record) {
-  const uid = newUid();
+  const uid = record.uid ?? newUid();
   if (user) return uploadPuzzle(record, uid);
-  return withStore('puzzles', 'readwrite', (s) => s.add({ ...record, uid }));
+  const packed = await packBlobs({ ...record, uid });
+  return withStore('puzzles', 'readwrite', (s) => s.add(packed));
+}
+
+// Signed in, when the gallery couldn't be reached: keeps the finished puzzle on this device.
+export async function keepPuzzleForLater(record) {
+  if (!user) throw new Error('Only for signed-in players');
+  return putAll('saved', [{ ...record, id: `gallery-${record.uid}`, userId: user.id }]);
+}
+
+// Sends puzzles kept for later to the account's gallery; resolves with how many went.
+export async function sendWaitingPuzzles() {
+  if (!user) return 0;
+  const waiting = (await withStore('saved', 'readonly', (s) => s.getAll()))
+    .filter((r) => String(r.id).startsWith('gallery-') && r.userId === user.id).map(unpackBlobs);
+  let sent = 0;
+  for (const { id, userId, ...record } of waiting) {
+    await uploadPuzzle(record, record.uid);
+    await withStore('saved', 'readwrite', (s) => s.delete(id));
+    sent++;
+  }
+  return sent;
 }
 
 // Account puzzles come without their picture; `imageUrl` loads it (only for this player).
@@ -187,10 +232,31 @@ export async function saveProgressFull(photo, record) {
   return putAll('saved', [{ ...record, id: 'current' }, { ...photo, id: 'current-photo' }]);
 }
 
-// Later saves: just the layout and clock. keepalive lets the last save finish while the page
-// closes (browsers allow up to 64 KB for that).
+const replaced = () => Object.assign(new Error('Another puzzle has been saved since.'), { code: 'saveReplaced' });
+
+// Whether `saved` (the stored puzzle) is the one with this gameId (older saves have none).
+const sameGame = (saved, gameId) => Boolean(saved) && (!saved.gameId || !gameId || saved.gameId === gameId);
+
+// Later saves: just the layout and clock, refused (code 'saveReplaced') when another puzzle was
+// saved since. keepalive lets the last save finish while the page closes (browsers allow up to
+// 64 KB for that).
 export async function saveProgress(record) {
-  if (!user) return withStore('saved', 'readwrite', (s) => s.put({ ...record, id: 'current' }));
+  if (!user) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      // Checked and written in one transaction, so another tab can't slip in between.
+      const tx = db.transaction('saved', 'readwrite');
+      const store = tx.objectStore('saved');
+      let refused = false;
+      store.get('current').onsuccess = (e) => {
+        if (sameGame(e.target.result, record.gameId)) store.put({ ...record, id: 'current' });
+        else refused = true;
+      };
+      tx.oncomplete = () => (refused ? reject(replaced()) : resolve());
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
   const body = { progress: record };
   return api('progress', body, { keepalive: JSON.stringify(body).length < 60000 });
 }
@@ -225,9 +291,12 @@ export async function loadProgress() {
   return { ...progress, photo: { blob, thumb } };
 }
 
-export async function clearProgress() {
+// Removes the unfinished puzzle; with a gameId, only if it's still that one (finishing a puzzle
+// in one tab mustn't remove a newer one started in another).
+export async function clearProgress(gameId = null) {
   await clearRecovery();
-  if (user) return api('progress/clear', {});
+  if (user) return api('progress/clear', gameId ? { gameId } : {});
+  if (gameId && !sameGame(await withStore('saved', 'readonly', (s) => s.get('current')), gameId)) return undefined;
   return local.clearProgress();
 }
 
