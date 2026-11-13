@@ -7,10 +7,19 @@ a wooden, marble or felt table — alone, or live with a friend.
 
 [![Tests](https://github.com/dogabudakci/puzzle-table/actions/workflows/tests.yml/badge.svg)](https://github.com/dogabudakci/puzzle-table/actions/workflows/tests.yml)
 
-![Puzzle Table](assets/og-image.jpg)
+![The start page: puzzle frames hanging on strings, with drifting pieces](docs/screenshots/start.jpg)
 
 > The live demo is a static, guest-only build hosted on GitHub Pages. Accounts, friends and
 > online games need the Python server in this repository (see [Running it](#running-it)).
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Daily puzzle with calendar, photo choice and puzzle preview](docs/screenshots/setup.jpg) | ![The photo library](docs/screenshots/library.jpg) |
+| **Set up a puzzle:** daily puzzle, photo choice and a live preview of the cut | **64 built-in photos**, or upload your own |
+| ![150 pieces spilled on an oak table](docs/screenshots/game.jpg) | ![Choosing a table surface during a game](docs/screenshots/tables.jpg) |
+| **Play:** pieces spill from a pouch onto the table, with a short guide for first-timers | **8 table surfaces**, switchable mid-game |
 
 ---
 
