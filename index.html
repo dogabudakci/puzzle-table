@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="start.puzzleTablePieceBy">Puzzle Table · Piece by Piece, Find Your Peace</title>
+  <meta name="description" content="Turn your favorite memories and photos into jigsaw puzzles. Pick your pace, choose a table, and play alone or with a friend.">
+  <meta name="theme-color" content="#1c1815">
+  <link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- How the link looks when shared (WhatsApp, iMessage, social media) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Puzzle Table">
+  <meta property="og:title" content="Puzzle Table · Piece by Piece, Find Your Peace">
+  <meta property="og:description" content="Turn your favorite memories and photos into jigsaw puzzles, alone or with a friend.">
+  <meta property="og:url" content="https://dogabudakci.github.io/puzzle-table/">
+  <meta property="og:image" content="https://dogabudakci.github.io/puzzle-table/assets/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Puzzle Table: framed photos around the title">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="assets/fonts/inter-normal-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Hide the start page until the opening animation covers it (js/intro.js removes this) -->
+  <script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('intro-pending');</script>
+</head>
+<body>
+  <!-- Icon sprite: stroke icons inherit colour and stroke settings from the .icon class -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-logo" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-gallery" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="m6 16 4-4.5 3 3 2-2 3 3.5"/><circle cx="15.5" cy="8.5" r="1.4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-sound-on" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/></symbol>
+    <symbol id="i-sound-off" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="m16 9.5 5 5m0-5-5 5"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.7h18M3 14.3h18M9 5v4.7M15 9.7v4.6M8 14.3V19"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 5 4.5 5.8 4.5 8.5s-4.5 3.5-4.5 8.5M16.5 3.5c0 5-4.5 5.8-4.5 8.5s4.5 3.5 4.5 8.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 4M12 17.3h.01"/></symbol>
+    <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.2a4.3 4.3 0 0 0 7 0M9 9.6h.01M15 9.6h.01"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/><rect x="8.5" y="8.5" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
+    <symbol id="i-friends" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.5c.6-3.3 3-5.2 6-5.2s5.4 1.9 6 5.2"/><path d="M15.5 5.6a3 3 0 0 1 0 5.8M17.6 14.6c1.8.7 3 2.4 3.4 4.9"/></symbol>
+    <symbol id="i-together" viewBox="0 0 24 24"><path d="M3.5 8h4a2.2 2.2 0 1 1 4.4 0h0V12a2.2 2.2 0 1 0 0 4.4V20.5h-8.4z"/><path d="M12.3 3.5h8.2V12a2.2 2.2 0 1 0-4.4 0h-3.8V8.2" opacity=".75"/></symbol>
+    <symbol id="i-race" viewBox="0 0 24 24"><path d="M5 21V4M5 4.5c4-2 6 2 10 0s4 0 4 0v8s-1-2-4 0-6-2-10 0"/><path d="M9 4.2v8M13 4.6v8" opacity=".5"/></symbol>
+    <symbol id="i-challenge" viewBox="0 0 24 24"><path d="M7.5 4h9v4.5a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 6H4.5a3 3 0 0 0 3 4M16.5 6h3a3 3 0 0 1-3 4M12 13v3.5M8.5 20h7l-1-3.5h-5z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.3-5.4M4.5 4.5V9H9"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="1.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-pieces" viewBox="0 0 24 24"><path d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.7-7.6.3 1.6 1.1 2.8 2.2 3.4C11.6 7.6 12.9 5 15 3c.3 3 3.5 5.6 3.5 10.6 0 4.3-2.7 7.4-6.5 7.4z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.2 2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6-4.4-4.2 6-.8z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-edges" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx=".5" stroke-dasharray="2 2"/></symbol>
+    <symbol id="i-hint" viewBox="0 0 24 24"><path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.1v.1h5v-.1c0-.8.4-1.6 1.1-2.1A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M4 15.5V12a8 8 0 0 1 16 0v3.5"/><rect x="3.5" y="14" width="4" height="6.5" rx="1.5"/><rect x="16.5" y="14" width="4" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 5 6v5.5c0 4.3 3 7.6 7 9 4-1.4 7-4.7 7-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <!-- achievement medals -->
+    <symbol id="m-first" viewBox="0 0 24 24"><path d="M4 7h4.2a2.8 2.8 0 1 1 5.6 0H18v4.2a2.8 2.8 0 1 1 0 5.6V21H4z"/></symbol>
+    <symbol id="m-collector" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><rect x="6" y="7" width="12" height="10"/><path d="m7.5 15.5 3-3.5 2 2 1.5-1.5 2.5 3"/></symbol>
+    <symbol id="m-curator" viewBox="0 0 24 24"><path d="m3 9 9-5 9 5M5 9.5v8.5M9.7 9.5v8.5M14.3 9.5v8.5M19 9.5v8.5M3 20.5h18"/></symbol>
+    <symbol id="m-centurion" viewBox="0 0 24 24"><text x="12" y="15.6" text-anchor="middle" font-family="Inter, sans-serif" font-size="9.5" font-weight="700" fill="currentColor" stroke="none">100</text><circle cx="12" cy="12" r="9"/></symbol>
+    <symbol id="m-grandmaster" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 5.5H5v1.5a3 3 0 0 0 3 3M16 5.5h3v1.5a3 3 0 0 1-3 3M12 13v3.5M8.5 20.5h7M9.5 20.5v-4h5v4"/></symbol>
+    <symbol id="m-clock" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M12 9.5v4l2.5 2M10 3.5h4M12 3.5v3M18 7l1.5-1.5"/></symbol>
+    <symbol id="m-quick" viewBox="0 0 24 24"><path d="M13.5 2.5 5 14h6.5l-1 7.5L19 10h-6.5z"/></symbol>
+    <symbol id="m-solo" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/><path d="m4 4 16 16"/></symbol>
+    <symbol id="m-tables" viewBox="0 0 24 24"><path d="m12 3.5 9 5-9 5-9-5zM3 12.5l9 5 9-5M3 16.5l9 5 9-5"/></symbol>
+  </svg>
+
+  <!-- ===================== Setup ===================== -->
+  <div class="setup-screen" id="setup">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <span class="logo"><svg class="logo-mark"><use href="#i-logo"/></svg>Puzzle Table</span>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="open-gallery" aria-label="My gallery" data-i18n-attr="aria-label:start.myGallery">
+            <svg class="icon"><use href="#i-gallery"/></svg>
+            <span class="btn-label" data-i18n="start.myGallery">My gallery</span>
+            <span class="count" id="gallery-count" hidden></span>
+          </button>
+          <button type="button" class="btn ghost friends-btn" id="friends-btn" aria-label="Friends" hidden data-i18n-attr="aria-label:start.friends">
+            <svg class="icon"><use href="#i-friends"/></svg>
+            <span class="btn-label" data-i18n="start.friends">Friends</span>
+            <span class="count" id="friends-count" hidden></span>
+          </button>
+          <button type="button" class="btn ghost icon-only" id="settings-btn" aria-label="Settings" title="Settings" data-i18n-attr="aria-label:start.settings;title:start.settings">
+            <svg class="icon"><use href="#i-settings"/></svg>
+          </button>
+          <button type="button" class="btn secondary account-btn" id="account-btn" hidden data-i18n="start.sign">Sign in</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero-stage">
+      <div class="hero">
+        <p class="eyebrow" data-i18n="start.littleTimeYourself">A little time for yourself</p>
+        <h1 data-i18n="start.makeSpaceQuietMoment">Make space for a quiet&nbsp;moment.</h1>
+        <p class="lede" data-i18n="start.turnFavoriteMemoriesPhotos2">Turn your favorite memories &amp; photos into puzzles, find your rhythm, and enjoy the beauty of every piece.</p>
+        <p class="motto" data-i18n="start.pieceByPieceFind">Piece by Piece, Find Your Peace.</p>
+      </div>
+      <div class="hero-ghosts" id="hero-ghosts" aria-hidden="true"></div>
+      <div class="hero-drift" id="hero-drift" aria-hidden="true"></div>
+      <div class="hero-cards" id="hero-cards" aria-hidden="true"></div>
+    </section>
+
+    <main class="setup" id="setup-main">
+      <!-- Continue an unfinished puzzle, and today's daily puzzle -->
+      <div class="today-row" id="today-row">
+        <section class="card resume-card" id="resume-card" hidden>
+          <div class="resume-thumb"><img id="resume-img" alt=""><span class="resume-pct" id="resume-pct"></span></div>
+          <div class="resume-body">
+            <p class="card-kicker" data-i18n="start.continuePuzzle">Continue your puzzle</p>
+            <h2 id="resume-title"></h2>
+            <p class="resume-meta" id="resume-meta"></p>
+            <div class="resume-bar" aria-hidden="true"><span id="resume-fill"></span></div>
+            <div class="resume-actions">
+              <button type="button" class="btn primary" id="continue-btn" data-i18n="start.continue">Continue</button>
+              <button type="button" class="btn ghost" id="discard-btn" data-i18n="start.discard">Discard</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card daily-card" id="daily-card" hidden>
+          <div class="daily-layout">
+          <div class="daily-main">
+            <div class="daily-thumb"><img id="daily-img" alt=""></div>
+            <div class="daily-body">
+              <p class="card-kicker"><span data-i18n="start.daily2">Daily ·</span> <span id="daily-date"></span></p>
+              <h2 id="daily-title"></h2>
+              <p class="daily-streak" id="daily-streak"></p>
+              <p class="daily-message" id="daily-message"></p>
+              <button type="button" class="btn primary" id="daily-btn"></button>
+              <ol class="daily-board" id="daily-board" aria-label="Today among friends" hidden data-i18n-attr="aria-label:start.todayAmongFriends"></ol>
+            </div>
+          </div>
+          <div class="daily-cal" id="daily-cal"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="setup-grid">
+        <div class="steps">
+          <section class="card step" id="step-upload">
+            <header class="step-head">
+              <span class="step-num"><span>1</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2 data-i18n="start.choosePhoto">Choose a photo</h2>
+            </header>
+
+            <label class="dropzone" id="dropzone">
+              <input type="file" id="file-input" accept="image/*" hidden>
+              <span class="dropzone-icon"><svg class="icon"><use href="#i-upload"/></svg></span>
+              <strong><span data-i18n="start.dropPhotoHere">Drop a photo here, or</span> <span class="link" data-i18n="start.browse">browse</span></strong>
+              <span data-i18n="start.jpgPngWebpLeast">JPG, PNG or WebP · at least 300 px on the short side</span>
+            </label>
+
+            <div class="photo-info" id="photo-info" hidden>
+              <div class="photo-thumb-wrap"><img class="photo-thumb" id="photo-thumb" alt=""></div>
+              <div class="photo-details">
+                <div class="photo-name" id="photo-name"></div>
+                <div class="photo-res" id="photo-res"></div>
+                <div class="quality">
+                  <span class="badge" id="quality-badge"></span>
+                  <span class="quality-message" id="quality-message"></span>
+                </div>
+              </div>
+              <button type="button" class="btn secondary small" id="change-photo" data-i18n="start.replace">Replace</button>
+            </div>
+
+            <label class="mystery-peek" id="mystery-peek-row" hidden>
+              <input type="checkbox" id="mystery-peek">
+              <span><strong data-i18n="start.allowPeeking">Allow peeking</strong> <span data-i18n="start.showReferencePictureDuring">Show the reference picture during the game (R)</span></span>
+            </label>
+
+            <button type="button" class="mystery-btn" id="mystery-btn">
+              <span class="mystery-card" aria-hidden="true">?</span>
+              <span class="mystery-text">
+                <strong data-i18n="start.mysteryPuzzle">Mystery puzzle</strong>
+                <span data-i18n="start.randomPhotoFromLibrary">A random photo from the library, kept secret until it’s finished.</span>
+              </span>
+              <svg class="icon"><use href="#i-back"/></svg>
+            </button>
+
+            <div class="library">
+              <p class="library-title" data-i18n="start.pickOneFromOur">Or pick one from our library</p>
+              <div id="photo-library"></div>
+            </div>
+
+            <p class="error" id="upload-error" role="alert" hidden></p>
+          </section>
+
+          <section class="card step locked" id="step-pieces">
+            <header class="step-head">
+              <span class="step-num"><span>2</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2 data-i18n="start.howLongWouldLike">How long would you like to stay?</h2>
+            </header>
+            <p class="locked-hint" data-i18n="start.choosePhotoFirst">Choose a photo first.</p>
+            <div class="pace-grid" id="pace-grid" role="radiogroup" aria-label="Pace" data-i18n-attr="aria-label:start.pace"></div>
+            <details class="exact" id="exact-pieces">
+              <summary data-i18n="start.chooseExactNumberPieces">Choose an exact number of pieces</summary>
+              <div class="option-grid" id="piece-grid" role="radiogroup" aria-label="Number of pieces" data-i18n-attr="aria-label:start.numberPieces"></div>
+            </details>
+            <p class="step-note" id="piece-summary"></p>
+          </section>
+
+          <section class="card step locked" id="step-table">
+            <header class="step-head">
+              <span class="step-num"><span>3</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2 data-i18n="start.tableSurface">Table surface</h2>
+            </header>
+            <p class="locked-hint" data-i18n="start.choosePhotoFirst">Choose a photo first.</p>
+            <div id="setup-table-picker"></div>
+          </section>
+
+          <section class="card step locked" id="step-timer">
+            <header class="step-head">
+              <span class="step-num"><span>4</span><svg class="icon"><use href="#i-check"/></svg></span>
+              <h2 data-i18n="start.timer">Timer</h2>
+            </header>
+            <p class="locked-hint" data-i18n="start.choosePhotoFirst">Choose a photo first.</p>
+            <div class="option-grid two" role="radiogroup" aria-label="Timer mode" data-i18n-attr="aria-label:start.timerMode">
+              <label class="option">
+                <input type="radio" name="timer-mode" value="stopwatch" checked>
+                <svg class="icon option-icon"><use href="#i-clock"/></svg>
+                <strong data-i18n="start.stopwatch">Stopwatch</strong>
+                <span data-i18n="start.countsUpNoPressure">Counts up, no pressure</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="timer-mode" value="countdown">
+                <svg class="icon option-icon"><use href="#i-hourglass"/></svg>
+                <strong data-i18n="start.countdown">Countdown</strong>
+                <span data-i18n="start.beatClock">Beat the clock</span>
+              </label>
+            </div>
+            <div class="countdown-options" id="countdown-options" hidden>
+              <div class="chip-row" id="minute-presets">
+                <button type="button" class="chip" data-minutes="5">5 <span data-i18n="start.minShort">min</span></button>
+                <button type="button" class="chip" data-minutes="10">10 <span data-i18n="start.minShort">min</span></button>
+                <button type="button" class="chip" data-minutes="15">15 <span data-i18n="start.minShort">min</span></button>
+                <button type="button" class="chip" data-minutes="30">30 <span data-i18n="start.minShort">min</span></button>
+                <button type="button" class="chip" data-minutes="60" data-i18n="start.1Hour">1 hour</button>
+              </div>
+              <label class="field">
+                <span data-i18n="start.custom">Custom</span>
+                <input type="number" id="countdown-minutes" min="1" max="600" step="1" inputmode="numeric">
+                <span data-i18n="start.minutes">minutes</span>
+              </label>
+              <p class="step-note" id="minutes-hint"></p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="card summary" aria-label="Your puzzle" data-i18n-attr="aria-label:start.puzzle">
+          <h2 data-i18n="start.puzzle">Your puzzle</h2>
+          <div class="summary-preview" id="summary-preview">
+            <canvas id="preview-canvas" hidden></canvas>
+            <div class="preview-empty" id="preview-empty">
+              <svg class="icon"><use href="#i-pieces"/></svg>
+              <span data-i18n="start.photoWillAppearHere">Your photo will appear here, cut into pieces.</span>
+            </div>
+          </div>
+          <dl class="summary-list">
+            <div><dt data-i18n="start.pieces">Pieces</dt><dd id="sum-pieces">–</dd></div>
+            <div><dt data-i18n="start.table">Table</dt><dd id="sum-table">–</dd></div>
+            <div><dt data-i18n="start.timer">Timer</dt><dd id="sum-timer">–</dd></div>
+          </dl>
+          <button type="button" class="btn primary large" id="start-btn" disabled data-i18n="start.startPuzzle">Start puzzle</button>
+          <p class="privacy-note" id="privacy-note"><svg class="icon"><use href="#i-shield"/></svg><span data-i18n="start.photosStayDevice">Your photos stay on this device.</span></p>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <span class="logo small"><svg class="logo-mark"><use href="#i-logo"/></svg>Puzzle Table</span>
+      <p class="motto" data-i18n="start.pieceByPieceFind">Piece by Piece, Find Your Peace.</p>
+      <nav class="footer-links" aria-label="About this site" data-i18n-attr="aria-label:start.aboutSite">
+        <a href="https://github.com/dogabudakci/puzzle-table" target="_blank" rel="noopener" data-i18n="start.contact">Contact</a>
+      </nav>
+      <p class="footer-small">© 2026 Doga</p>
+    </footer>
+  </div>
+
+  <!-- ===================== Play ===================== -->
+  <div class="game" id="game" hidden>
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <button type="button" class="icon-btn" id="back-btn" aria-label="Leave puzzle" title="Leave puzzle" data-i18n-attr="aria-label:play.leavePuzzle;title:play.leavePuzzle">
+          <svg class="icon"><use href="#i-back"/></svg>
+        </button>
+        <span class="toolbar-title" id="game-title"></span>
+      </div>
+
+      <div class="toolbar-center">
+        <div class="clock" id="clock">
+          <svg class="icon clock-icon"><use href="#i-clock"/></svg>
+          <span class="clock-time" id="clock-time">0:00</span>
+        </div>
+        <button type="button" class="icon-btn" id="pause-btn" aria-label="Pause (P)" title="Pause (P)" disabled data-i18n-attr="aria-label:play.pauseP;title:play.pauseP">
+          <svg class="icon"><use href="#i-pause"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="hint-btn" aria-label="Hint (H)" title="Hint (H): show two pieces that fit" disabled data-i18n-attr="aria-label:play.hintH;title:play.hintHShowTwo">
+          <svg class="icon"><use href="#i-hint"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="undo-btn" aria-label="Undo (Ctrl+Z)" title="Undo last move (Ctrl+Z)" disabled data-i18n-attr="aria-label:play.undoCtrlZ;title:play.undoLastMoveCtrl">
+          <svg class="icon"><use href="#i-undo"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="edges-btn" aria-label="Edges only (E)" aria-pressed="false" title="Edges only (E): fade the inner pieces" disabled data-i18n-attr="aria-label:play.edgesOnlyE;title:play.edgesOnlyEFade">
+          <svg class="icon"><use href="#i-edges"/></svg>
+        </button>
+        <div class="progress" id="progress">
+          <div class="progress-bar" aria-hidden="true"><span id="progress-fill"></span></div>
+          <span class="progress-text" aria-live="polite"><strong id="progress-text">0%</strong> <span data-i18n="play.complete">complete</span></span>
+        </div>
+        <div class="popover-wrap react-wrap" id="react-wrap" hidden>
+          <button type="button" class="icon-btn" id="react-btn" aria-expanded="false" aria-label="Send a reaction" title="Send a reaction" data-i18n-attr="aria-label:play.sendReaction;title:play.sendReaction">
+            <svg class="icon"><use href="#i-smile"/></svg>
+          </button>
+          <div class="react-menu" id="react-menu" role="menu" hidden></div>
+        </div>
+        <button type="button" class="save-status" id="save-status" data-state="idle" hidden disabled>
+          <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span></span>
+        </button>
+        <div class="friend-chip" id="friend-chip" hidden>
+          <span class="friend-dot" aria-hidden="true"></span>
+          <span class="friend-chip-name" id="friend-chip-name"></span>
+          <span class="friend-bar" aria-hidden="true"><span id="friend-chip-fill"></span></span>
+        </div>
+      </div>
+
+      <div class="toolbar-side end">
+        <button type="button" class="icon-btn" id="reference-btn" aria-pressed="false" aria-label="Reference picture (R)" title="Reference picture (R)" data-i18n-attr="aria-label:play.referencePictureR;title:play.referencePictureR">
+          <svg class="icon"><use href="#i-eye"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="help-btn" aria-label="Tips" title="Tips" data-i18n-attr="aria-label:play.tips;title:play.tips">
+          <svg class="icon"><use href="#i-help"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="game-settings-btn" aria-label="Settings" title="Settings" data-i18n-attr="aria-label:start.settings;title:start.settings">
+          <svg class="icon"><use href="#i-settings"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="music-btn" aria-pressed="false" aria-label="Music (M)" title="Music (M)" data-i18n-attr="aria-label:play.musicM;title:play.musicM">
+          <svg class="icon"><use href="#i-music"/></svg>
+        </button>
+        <div class="popover-wrap">
+          <button type="button" class="icon-btn" id="table-btn" aria-expanded="false" aria-controls="table-popover" aria-label="Change table" title="Change table" data-i18n-attr="aria-label:play.changeTable;title:play.changeTable">
+            <svg class="icon"><use href="#i-table"/></svg>
+          </button>
+          <div class="popover" id="table-popover" hidden></div>
+        </div>
+        <button type="button" class="icon-btn" id="sound-btn" aria-pressed="true" aria-label="Sound" title="Sound" data-i18n-attr="aria-label:play.sound;title:play.sound">
+          <svg class="icon"><use href="#i-sound-on"/></svg>
+        </button>
+        <button type="button" class="icon-btn" id="fullscreen-btn" aria-label="Full screen (F)" title="Full screen (F)" data-i18n-attr="aria-label:play.fullScreenF;title:play.fullScreenF">
+          <svg class="icon"><use href="#i-expand"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="table" id="table"></div>
+
+    <div class="zoom-controls" id="zoom-controls" role="group" aria-label="Zoom" hidden data-i18n-attr="aria-label:play.zoom">
+      <button type="button" class="icon-btn" id="zoom-in" aria-label="Zoom in (+)" title="Zoom in (+)" data-i18n-attr="aria-label:play.zoom2;title:play.zoom2"><svg class="icon"><use href="#i-plus"/></svg></button>
+      <span class="zoom-level" id="zoom-level" aria-live="polite">100%</span>
+      <button type="button" class="icon-btn" id="zoom-out" aria-label="Zoom out (−)" title="Zoom out (−)" disabled data-i18n-attr="aria-label:play.zoomOut;title:play.zoomOut"><svg class="icon"><use href="#i-minus"/></svg></button>
+      <button type="button" class="icon-btn" id="zoom-fit" aria-label="See the whole table (0)" title="See the whole table (0)" disabled data-i18n-attr="aria-label:play.seeWholeTable0;title:play.seeWholeTable0"><svg class="icon"><use href="#i-fit"/></svg></button>
+    </div>
+
+    <figure class="reference" id="reference" hidden>
+      <img id="reference-img" alt="The finished picture" data-i18n-attr="alt:play.finishedPicture">
+      <figcaption><span data-i18n="play.reference">Reference</span> <button type="button" class="reference-close" id="reference-close" aria-label="Hide reference picture" data-i18n-attr="aria-label:play.hideReferencePicture"><svg class="icon"><use href="#i-close"/></svg></button></figcaption>
+    </figure>
+
+    <section class="music" id="music" aria-label="Music" hidden data-i18n-attr="aria-label:music.music">
+      <header class="music-head">
+        <span><svg class="icon"><use href="#i-music"/></svg><span data-i18n="music.music">Music</span></span>
+        <button type="button" class="reference-close" id="music-close" aria-label="Hide music panel" data-i18n-attr="aria-label:music.hideMusicPanel"><svg class="icon"><use href="#i-close"/></svg></button>
+      </header>
+      <div class="music-moods" id="music-moods" role="radiogroup" aria-label="Mood" data-i18n-attr="aria-label:music.mood"></div>
+      <div class="music-controls">
+        <button type="button" class="music-play" id="music-toggle" aria-label="Play music" data-i18n-attr="aria-label:music.playMusic">
+          <svg class="icon"><use href="#i-play"/></svg>
+        </button>
+        <span class="music-now" id="music-now" data-i18n="music.notPlaying">Not playing</span>
+        <input type="range" class="music-volume" id="music-volume" min="0" max="1" step="0.01" aria-label="Volume" data-i18n-attr="aria-label:music.volume">
+      </div>
+      <label class="music-own">
+        <input type="file" id="music-files" accept="audio/*" multiple hidden>
+        <svg class="icon"><use href="#i-upload"/></svg>
+        <span id="music-own-label" data-i18n="music.playOwnMusicFiles">Play your own music files</span>
+      </label>
+      <p class="music-note" data-i18n="music.madeLiveBrowserFree">Made live in your browser: free to enjoy, no licences or downloads.</p>
+    </section>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+    <p class="sr-only" id="announcer" aria-live="polite"></p>
+
+    <div class="connection-banner" id="connection-banner" role="status" hidden>
+      <span class="mini-spinner" aria-hidden="true"></span><span data-i18n="play.connectionLostReconnecting">Connection lost. Reconnecting…</span>
+    </div>
+
+    <!-- Live games with a friend: waiting for them, then 3-2-1 -->
+    <div class="countdown" id="countdown" hidden>
+      <span class="countdown-number" id="countdown-number"></span>
+      <p class="countdown-text" id="countdown-text"></p>
+    </div>
+
+    <div class="loading" id="loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p data-i18n="play.cuttingPieces">Cutting your pieces…</p>
+    </div>
+
+    <div class="cover" id="pause-cover" hidden>
+      <div class="result-card static">
+        <span class="result-icon"><svg class="icon"><use href="#i-pause"/></svg></span>
+        <h2 data-i18n="play.paused">Paused</h2>
+        <p data-i18n="play.clockStoppedTableHidden">The clock is stopped and the table is hidden.</p>
+        <div class="result-actions">
+          <button type="button" class="btn primary" id="resume-btn"><svg class="icon"><use href="#i-play"/></svg><span data-i18n="play.resume">Resume</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-card" id="timeup-card" role="alert" hidden>
+      <span class="result-icon warn"><svg class="icon"><use href="#i-hourglass"/></svg></span>
+      <h2 data-i18n="play.timeUp">Time's up</h2>
+      <p id="timeup-text"></p>
+      <div class="result-actions">
+        <button type="button" class="btn secondary" id="timeup-new-btn" data-i18n="play.newPuzzle">New puzzle</button>
+        <button type="button" class="btn primary" id="keep-going-btn" data-i18n="play.keepGoing">Keep going</button>
+      </div>
+    </div>
+
+    <div class="result-card" id="complete-card" role="status" hidden>
+      <span class="result-icon success"><svg class="icon"><use href="#i-check"/></svg></span>
+      <h2 data-i18n="play.puzzleComplete">Puzzle complete</h2>
+      <p class="motto" data-i18n="start.pieceByPieceFind">Piece by Piece, Find Your Peace.</p>
+      <div class="result-stars" id="result-stars" role="img"></div>
+      <p class="best-badge" id="best-badge" hidden></p>
+      <p class="daily-note" id="daily-note" hidden></p>
+      <p class="mystery-note" id="mystery-note" hidden></p>
+      <p class="match-note" id="match-note" hidden></p>
+      <div class="result-stats">
+        <div><span data-i18n="play.time">Time</span><strong id="stat-time"></strong></div>
+        <div><span data-i18n="play.moves">Moves</span><strong id="stat-moves"></strong></div>
+        <div><span data-i18n="start.pieces">Pieces</span><strong id="stat-pieces"></strong></div>
+        <div><span id="stat-extra-label"></span><strong id="stat-extra"></strong></div>
+        <div><span data-i18n="play.hints">Hints</span><strong id="stat-hints"></strong></div>
+      </div>
+      <p class="saved-note" id="saved-note"></p>
+      <div class="new-medals" id="new-medals"></div>
+      <div class="result-actions">
+        <button type="button" class="btn secondary" id="replay-btn"><svg class="icon"><use href="#i-replay"/></svg><span data-i18n="play.playAgain">Play again</span></button>
+        <button type="button" class="btn secondary" id="rematch-btn" hidden><svg class="icon"><use href="#i-replay"/></svg><span data-i18n="play.rematch">Rematch</span></button>
+        <button type="button" class="btn secondary" id="match-games-btn" hidden><svg class="icon"><use href="#i-friends"/></svg><span data-i18n="play.games">Games</span></button>
+        <button type="button" class="btn secondary" id="view-gallery-btn"><svg class="icon"><use href="#i-gallery"/></svg><span data-i18n="play.viewGallery">View in gallery</span></button>
+        <button type="button" class="btn primary" id="new-btn" data-i18n="play.newPuzzle">New puzzle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Gallery ===================== -->
+  <div class="gallery-screen" id="gallery" hidden>
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <button type="button" class="icon-btn" id="gallery-back-btn" aria-label="Back" title="Back" data-i18n-attr="aria-label:gallery.back;title:gallery.back">
+          <svg class="icon"><use href="#i-back"/></svg>
+        </button>
+        <span class="toolbar-title" data-i18n="start.myGallery">My gallery</span>
+      </div>
+    </header>
+    <div class="room">
+      <div class="wall">
+        <div class="gallery-stats" id="gallery-stats"></div>
+        <section class="shelf-wrap" aria-label="Achievements" data-i18n-attr="aria-label:gallery.achievements">
+          <h2 class="wall-heading" data-i18n="gallery.achievements">Achievements</h2>
+          <div class="shelf" id="achievement-shelf"></div>
+        </section>
+        <section aria-label="Finished puzzles" data-i18n-attr="aria-label:gallery.finishedPuzzles">
+          <h2 class="wall-heading" data-i18n="gallery.finishedPuzzles">Finished puzzles</h2>
+          <div class="frames" id="frames"></div>
+          <p class="empty-wall" id="empty-wall" hidden data-i18n="gallery.wallEmptyNowFinish">
+            The wall is empty for now. Finish a puzzle and it will be framed and hung here.
+          </p>
+        </section>
+      </div>
+      <div class="floor" id="floor"></div>
+    </div>
+  </div>
+
+  <dialog class="account-dialog" id="account-dialog" aria-labelledby="account-title">
+    <button type="button" class="icon-btn account-close" id="account-close" aria-label="Close" data-i18n-attr="aria-label:account.close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+
+    <!-- Signed out: sign in or create an account -->
+    <section id="account-guest">
+      <h2 id="account-title" data-i18n="account.welcome">Welcome</h2>
+      <p class="account-sub" data-i18n="account.signKeepPuzzlesStreak">Sign in to keep your puzzles, streak and gallery with your account.</p>
+      <div class="account-tabs" role="tablist">
+        <button type="button" role="tab" id="tab-login" aria-selected="true" data-i18n="start.sign">Sign in</button>
+        <button type="button" role="tab" id="tab-signup" aria-selected="false" data-i18n="account.createAccount">Create account</button>
+      </div>
+      <form class="account-form" id="account-form" novalidate>
+        <label><span data-i18n="account.emailUsername">Email or username</span>
+          <input type="text" id="account-identifier" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="254">
+        </label>
+        <label><span data-i18n="account.password">Password</span>
+          <input type="password" id="account-password" autocomplete="current-password" required maxlength="128">
+        </label>
+        <p class="account-hint" id="account-hint" hidden><span data-i18n="account.least10CharactersShort2">At least 10 characters. A short phrase of a few words is easy to remember and hard to guess.
+          By creating an account you agree to the</span> <span data-i18n="account.text">and</span>.</p>
+        <p class="account-error" id="account-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large" id="account-submit" data-i18n="start.sign">Sign in</button>
+        <button type="button" class="link-btn" id="forgot-btn" data-i18n="account.forgotPassword">Forgot your password?</button>
+      </form>
+    </section>
+
+    <!-- Forgot password: ask for a reset link -->
+    <section id="account-forgot" hidden>
+      <h2 data-i18n="account.resetPassword">Reset your password</h2>
+      <p class="account-sub" data-i18n="account.enterEmailAccountConfirmed">Enter the email of your account. If it’s confirmed, we’ll send you a link to choose a new password.</p>
+      <form class="account-form" id="forgot-form" novalidate>
+        <label><span data-i18n="account.email">Email</span> <input type="email" id="forgot-email" autocomplete="email" required maxlength="254"></label>
+        <p class="account-note" id="forgot-done" hidden></p>
+        <p class="account-error" id="forgot-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large" data-i18n="account.sendResetLink">Send reset link</button>
+        <button type="button" class="link-btn" id="forgot-back" data-i18n="account.backSign">Back to sign in</button>
+      </form>
+    </section>
+
+    <!-- From the emailed link: choose a new password -->
+    <section id="account-reset" hidden>
+      <h2 data-i18n="account.chooseNewPassword">Choose a new password</h2>
+      <p class="account-sub" data-i18n="account.signsOutEveryOther">This signs you out on every other device.</p>
+      <form class="account-form" id="reset-form" novalidate>
+        <input type="text" autocomplete="username" readonly hidden tabindex="-1">
+        <label><span data-i18n="account.newPassword">New password</span> <input type="password" id="reset-password" autocomplete="new-password" required maxlength="128"></label>
+        <p class="account-hint" data-i18n="account.least10CharactersShort">At least 10 characters. A short phrase of a few words is easy to remember and hard to guess.</p>
+        <p class="account-error" id="reset-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large" data-i18n="account.saveNewPassword">Save new password</button>
+      </form>
+    </section>
+
+    <!-- A short message, e.g. after confirming an email -->
+    <section id="account-message" hidden>
+      <h2 id="account-message-title"></h2>
+      <p class="account-sub" id="account-message-text"></p>
+      <button type="button" class="btn primary" id="account-message-ok" data-i18n="account.ok">OK</button>
+    </section>
+
+    <!-- Signed in -->
+    <section id="account-member" hidden>
+      <h2 data-i18n="account.account">Your account</h2>
+      <p class="account-sub"><span data-i18n="account.signedAs">Signed in as</span> <strong id="account-name"></strong></p>
+      <p class="email-status" id="email-status"></p>
+      <div class="account-row">
+        <button type="button" class="btn secondary" id="logout-btn" data-i18n="account.signOut">Sign out</button>
+        <button type="button" class="btn ghost" id="resend-btn" hidden data-i18n="account.resendConfirmationEmail">Resend confirmation email</button>
+        <a class="btn ghost" href="/api/export" download data-i18n="account.downloadMyData">Download my data</a>
+        <a class="btn ghost" href="admin.html" id="admin-link" hidden data-i18n="account.admin">Admin</a>
+      </div>
+      <p class="account-error" id="logout-error" role="alert" hidden></p>
+
+      <details class="account-more" id="email-more">
+        <summary id="email-summary" data-i18n="account.emailPasswordRecovery">Email for password recovery</summary>
+        <form class="account-form" id="email-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <label><span data-i18n="account.email">Email</span> <input type="email" id="email-new" autocomplete="email" required maxlength="254"></label>
+          <label><span data-i18n="account.password2">Your password</span> <input type="password" id="email-password" autocomplete="current-password" required maxlength="128"></label>
+          <p class="account-error" id="email-error" role="alert" hidden></p>
+          <button type="submit" class="btn primary" data-i18n="account.sendConfirmationLink">Send confirmation link</button>
+        </form>
+      </details>
+
+      <details class="account-more">
+        <summary data-i18n="account.changePassword">Change password</summary>
+        <form class="account-form" id="password-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <label><span data-i18n="account.currentPassword">Current password</span> <input type="password" id="pw-current" autocomplete="current-password" required maxlength="128"></label>
+          <label><span data-i18n="account.newPassword">New password</span> <input type="password" id="pw-new" autocomplete="new-password" required maxlength="128"></label>
+          <p class="account-error" id="pw-error" role="alert" hidden></p>
+          <button type="submit" class="btn primary" data-i18n="account.changePassword">Change password</button>
+        </form>
+      </details>
+
+      <details class="account-more">
+        <summary data-i18n="account.deleteAccount">Delete account</summary>
+        <form class="account-form" id="delete-form" novalidate>
+          <input type="text" class="account-username" autocomplete="username" readonly hidden tabindex="-1">
+          <p class="account-sub" data-i18n="account.removesAccountGoodPuzzles">This removes your account for good. Puzzles saved on this device stay here.</p>
+          <label><span data-i18n="account.password">Password</span> <input type="password" id="delete-password" autocomplete="current-password" required maxlength="128"></label>
+          <p class="account-error" id="delete-error" role="alert" hidden></p>
+          <button type="submit" class="btn danger" data-i18n="account.deleteMyAccount">Delete my account</button>
+        </form>
+      </details>
+    </section>
+  </dialog>
+
+  <dialog class="account-dialog friends-dialog" id="friends-dialog" aria-labelledby="friends-title">
+    <button type="button" class="icon-btn account-close" id="friends-close" aria-label="Close" data-i18n-attr="aria-label:account.close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+
+    <!-- Players who signed up with an email choose a username first -->
+    <section id="friends-name" hidden>
+      <h2 data-i18n="friends.chooseUsername">Choose a username</h2>
+      <p class="account-sub" data-i18n="friends.friendsAddByUsername">Friends add you by your username. It's the only thing they see about you: never your email.</p>
+      <form class="account-form" id="username-form" novalidate>
+        <label><span data-i18n="friends.username">Username</span>
+          <input type="text" id="username-input" autocomplete="off" autocapitalize="none" spellcheck="false" required minlength="3" maxlength="24">
+        </label>
+        <p class="account-hint" data-i18n="friends.324CharactersLetters">3–24 characters: letters, numbers, dots, dashes or underscores. It can't be changed later.</p>
+        <p class="account-error" id="username-error" role="alert" hidden></p>
+        <button type="submit" class="btn primary large" data-i18n="friends.saveUsername">Save username</button>
+      </form>
+    </section>
+
+    <section id="friends-main" hidden>
+      <h2 id="friends-title" data-i18n="friends.playFriends">Play with friends</h2>
+      <p class="account-sub"><span data-i18n="friends.username2">Your username is</span> <strong id="my-username"></strong><span data-i18n="friends.shareFriendsAdd">. Share it so friends can add you.</span></p>
+      <div class="account-tabs" role="tablist">
+        <button type="button" role="tab" id="tab-friends" aria-selected="true"><span data-i18n="start.friends">Friends</span> <span class="tab-count" id="friends-tab-count" hidden></span></button>
+        <button type="button" role="tab" id="tab-games" aria-selected="false"><span data-i18n="play.games">Games</span> <span class="tab-count" id="games-tab-count" hidden></span></button>
+      </div>
+      <div id="panel-friends">
+        <form class="add-friend" id="add-friend-form" novalidate>
+          <input type="text" id="add-friend-input" placeholder="Your friend's username" aria-label="Your friend's username" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="25" data-i18n-attr="placeholder:friends.friendUsername;aria-label:friends.friendUsername">
+          <button type="submit" class="btn primary" data-i18n="friends.addFriend">Add friend</button>
+        </form>
+        <p class="account-error" id="add-friend-error" role="alert" hidden></p>
+        <p class="account-note" id="add-friend-done" hidden></p>
+        <div class="people" id="friend-requests"></div>
+        <div class="people" id="friend-list"></div>
+        <p class="empty-note" id="friends-empty" data-i18n="friends.noFriendsYetAsk">No friends yet. Ask a friend for their username and add them here.</p>
+      </div>
+      <div id="panel-games" hidden>
+        <div class="people" id="game-list"></div>
+        <p class="empty-note" id="games-empty" hidden data-i18n="friends.noGamesYetPick">No games yet. Pick a friend and press Play.</p>
+      </div>
+    </section>
+
+    <!-- Setting up a game with a friend -->
+    <section id="friends-new" hidden>
+      <button type="button" class="link-btn back-link" id="new-game-back"><svg class="icon"><use href="#i-back"/></svg><span data-i18n="start.friends">Friends</span></button>
+      <h2><span data-i18n="friends.play2">Play with</span> <span id="new-game-friend"></span></h2>
+      <div class="mode-picker" id="mode-picker" role="radiogroup" aria-label="How to play" data-i18n-attr="aria-label:friends.howPlay">
+        <button type="button" role="radio" data-mode="together" aria-checked="true">
+          <svg class="icon"><use href="#i-together"/></svg><strong data-i18n="friends.together2">Together</strong><span data-i18n="friends.oneTableBothMove">One table. Both of you move pieces at the same time.</span>
+        </button>
+        <button type="button" role="radio" data-mode="race" aria-checked="false">
+          <svg class="icon"><use href="#i-race"/></svg><strong data-i18n="friends.race">Race</strong><span data-i18n="friends.startSameMomentFirst">Start at the same moment. The first to finish wins.</span>
+        </button>
+        <button type="button" role="radio" data-mode="challenge" aria-checked="false">
+          <svg class="icon"><use href="#i-challenge"/></svg><strong data-i18n="friends.challenge">Challenge</strong><span data-i18n="friends.eachPlaysWheneverLike">Each plays whenever you like. The faster time wins.</span>
+        </button>
+      </div>
+      <div class="picks-row" id="picks-row" hidden>
+        <span data-i18n="friends.puzzle">Puzzle</span>
+        <div class="segmented">
+          <button type="button" data-picks="same" aria-pressed="true" data-i18n="friends.sameBoth">Same for both</button>
+          <button type="button" data-picks="swap" aria-pressed="false" data-i18n="friends.pickEachOther">Pick for each other</button>
+        </div>
+      </div>
+      <h3 class="mini-head" id="photo-head" data-i18n="friends.photoBoth">Photo for both of you</h3>
+      <p class="photo-note" id="photo-note"></p>
+      <div class="mp-photo" id="mp-photo"></div>
+      <label class="pieces-row"><span data-i18n="start.pieces">Pieces</span>
+        <select id="mp-pieces">
+          <option value="12">12</option><option value="24">24</option><option value="48">48</option>
+          <option value="100" selected>100</option><option value="144">144</option><option value="200">200</option><option value="300">300</option>
+        </select>
+      </label>
+      <p class="account-error" id="new-game-error" role="alert" hidden></p>
+      <button type="button" class="btn primary large" id="send-invite" data-i18n="friends.sendInvite">Send invite</button>
+    </section>
+
+    <!-- Reporting a player -->
+    <section id="friends-report" hidden>
+      <button type="button" class="link-btn back-link" id="report-back"><svg class="icon"><use href="#i-back"/></svg><span data-i18n="start.friends">Friends</span></button>
+      <h2><span data-i18n="report.report">Report</span> <span id="report-name"></span></h2>
+      <form class="account-form report-form" id="report-form" novalidate>
+        <p class="account-sub" data-i18n="report.reportsArePrivatePlayer">Reports are private: the player isn't told who reported them. We look at every one.</p>
+        <fieldset class="report-reasons">
+          <legend data-i18n="report.whatWrong">What's wrong?</legend>
+          <label><input type="radio" name="reason" value="name"> <span data-i18n="report.offensiveUsername">Offensive username</span></label>
+          <label><input type="radio" name="reason" value="harassment"> <span data-i18n="report.harassmentUnkindBehaviour">Harassment or unkind behaviour</span></label>
+          <label><input type="radio" name="reason" value="spam"> <span data-i18n="report.spamUnwantedRequests">Spam or unwanted requests</span></label>
+          <label><input type="radio" name="reason" value="photo"> <span data-i18n="report.inappropriatePhoto">Inappropriate photo</span></label>
+          <label><input type="radio" name="reason" value="cheating"> <span data-i18n="report.cheating">Cheating</span></label>
+          <label><input type="radio" name="reason" value="other"> <span data-i18n="report.somethingElse">Something else</span></label>
+        </fieldset>
+        <label><span data-i18n="report.anythingElseWeShould">Anything else we should know? (optional)</span>
+          <textarea id="report-details" rows="3" maxlength="1000"></textarea>
+        </label>
+        <label class="check-row"><input type="checkbox" id="report-block" checked> <span data-i18n="report.alsoBlockThem">Also block them</span></label>
+        <p class="account-error" id="report-error" role="alert" hidden></p>
+        <button type="submit" class="btn danger large" data-i18n="report.sendReport">Send report</button>
+      </form>
+      <div id="report-done" hidden>
+        <p class="account-note" data-i18n="report.thankReportWasSent">Thank you. Your report was sent.</p>
+        <button type="button" class="btn primary" id="report-ok" data-i18n="report.backFriends">Back to friends</button>
+      </div>
+    </section>
+
+    <!-- Picking the friend's puzzle when accepting a "pick for each other" invite -->
+    <section id="friends-pick" hidden>
+      <button type="button" class="link-btn back-link" id="pick-back"><svg class="icon"><use href="#i-back"/></svg><span data-i18n="play.games">Games</span></button>
+      <h2><span data-i18n="friends.pickPuzzle">Pick a puzzle for</span> <span id="pick-friend"></span></h2>
+      <p class="account-sub" id="pick-sub"></p>
+      <div class="mp-photo" id="pick-photo"></div>
+      <p class="account-error" id="pick-error" role="alert" hidden></p>
+      <button type="button" class="btn primary large" id="pick-accept" data-i18n="friends.acceptSend">Accept and send</button>
+    </section>
+  </dialog>
+
+  <dialog class="account-dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <button type="button" class="icon-btn account-close" id="settings-close" aria-label="Close" data-i18n-attr="aria-label:account.close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+    <h2 id="settings-title" data-i18n="start.settings">Settings</h2>
+    <p class="account-sub" data-i18n="settings.savedDevice">Saved on this device.</p>
+
+    <div class="setting-row">
+      <label for="set-language" data-i18n="settings.language">Language</label>
+      <select id="set-language" class="setting-select"></select>
+    </div>
+    <div class="setting-row">
+      <label for="set-sound" data-i18n="settings.soundEffects">Sound effects</label>
+      <label class="switch"><input type="checkbox" id="set-sound" role="switch"><span></span></label>
+    </div>
+    <div class="setting-row">
+      <label for="set-sound-volume" data-i18n="settings.effectsVolume">Effects volume</label>
+      <input type="range" id="set-sound-volume" min="0" max="1" step="0.05">
+    </div>
+    <div class="setting-row">
+      <label for="set-music-volume" data-i18n="settings.musicVolume">Music volume</label>
+      <input type="range" id="set-music-volume" min="0" max="1" step="0.01">
+    </div>
+    <div class="setting-row">
+      <span data-i18n="sound.cantHear">Can't hear anything?</span>
+      <button type="button" class="btn secondary small" id="set-test-sound" data-i18n="sound.test">Test sound</button>
+    </div>
+    <p class="sound-test-result" id="sound-test-result" aria-live="polite"></p>
+
+    <h3 class="mini-head" data-i18n="start.table">Table</h3>
+    <div class="settings-tables" id="settings-tables"></div>
+
+    <h3 class="mini-head" data-i18n="settings.help">Help</h3>
+    <div class="setting-row">
+      <span data-i18n="settings.tipsNewPlayers">Tips for new players</span>
+      <button type="button" class="btn secondary small" id="set-guide" data-i18n="settings.showAgain">Show again</button>
+    </div>
+    <p class="settings-keys"><strong data-i18n="settings.keyboard">Keyboard:</strong> <span data-i18n="settings.hHintEEdges">H hint · E edges · R reference · P pause · M music · + / − zoom · 0 whole table · F full screen</span></p>
+  </dialog>
+
+  <div class="notice" id="notice" role="status" hidden>
+    <svg class="icon"><use href="#i-friends"/></svg>
+    <span id="notice-text"></span>
+    <button type="button" class="btn primary small" id="notice-action" hidden></button>
+    <button type="button" class="icon-btn notice-close" id="notice-close" aria-label="Dismiss" data-i18n-attr="aria-label:friends.dismiss"><svg class="icon"><use href="#i-close"/></svg></button>
+  </div>
+
+  <dialog class="viewer" id="viewer" aria-label="Puzzle details" data-i18n-attr="aria-label:gallery.puzzleDetails">
+    <button type="button" class="icon-btn light viewer-close" id="viewer-close" aria-label="Close" data-i18n-attr="aria-label:account.close">
+      <svg class="icon"><use href="#i-close"/></svg>
+    </button>
+    <div class="viewer-body" id="viewer-body"></div>
+    <div class="result-actions">
+      <button type="button" class="btn secondary danger" id="viewer-delete"><svg class="icon"><use href="#i-trash"/></svg><span data-i18n="gallery.remove">Remove</span></button>
+      <button type="button" class="btn secondary" id="viewer-download"><svg class="icon"><use href="#i-download"/></svg><span data-i18n="gallery.download">Download</span></button>
+      <button type="button" class="btn primary" id="viewer-replay"><svg class="icon"><use href="#i-replay"/></svg><span data-i18n="gallery.puzzleAgain">Puzzle it again</span></button>
+    </div>
+  </dialog>
+
+  <script src="vendor/gsap.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
